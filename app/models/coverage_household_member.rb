@@ -17,6 +17,7 @@ class CoverageHouseholdMember
   def family_member=(new_family_member)
     if coverage_household && (coverage_household.coverage_household_members.where(family_member_id: new_family_member._id) == [])
       self.family_member_id = new_family_member._id
+      self.applicant_id = new_family_member._id
     end
   end
 

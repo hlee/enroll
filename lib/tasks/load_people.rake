@@ -23,7 +23,10 @@ namespace :seed do
     data = JSON.load(contents)
     puts "Loading #{data.count} families."
     num_success = data.reduce(0) do |acc, pd|
-      family = Family.create(pd)
+      family = Family.create!(pd)
+      family.households.first.coverage_households.first.coverage_household_members.each_with_index do |fm, index|
+        fm.update_attributes(applicant_id: pd["households"].first["coverage_households"].first["coverage_household_members"][index]["applicant_id"])
+      end
       family.valid? ? acc + 1 : acc
     end
     puts "Loaded #{num_success} families successfully."

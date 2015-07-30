@@ -1,0 +1,29 @@
+<div class="container">
+  <div class="row">
+    <div class="col-lg-7 col-md-7 col-sm-8 col-xs-12">
+      <h3>Eligibility Enrollment Reasons</h3>
+      <div class="table-responsive table-border">
+        <table class="table table-wrapper table-condensed group-selection-tbl">
+          <tbody>
+            <% if @family.current_enrollment_eligibility_reasons.size > 0 %>
+              <% @family.current_enrollment_eligibility_reasons.each_with_index do |reason, index| %>
+                <tr>
+                  <td width="20"> <%= radio_button_tag("eligibility_reasons[0]", reason.reason_provider, class: "required floatlabel") %></td>
+                  <td><%= label_tag("eligibility_reasons[0]", "Marriage")%></td>
+                </tr>
+                <tr>
+                  <td width="20"> <%= radio_button_tag("eligibility_reasons[1]", reason.reason_provider, class: "required floatlabel") %></td>
+                  <td><%= label_tag("eligibility_reasons[1]", "Birth")%></td>
+                </tr>
+                <tr>
+                  <td width="20"> <%= radio_button_tag("eligibility_reasons[2]", reason.reason_provider, class: "required floatlabel") %></td>
+                  <td><%= label_tag("eligibility_reasons[2]", "Location Change")%></td>
+                </tr>
+              <% end %>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

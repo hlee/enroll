@@ -184,6 +184,8 @@ Rails.application.routes.draw do
   post 'group_selection/new', to: 'group_selection#new'
   post 'group_selection/create', to: 'group_selection#create'
 
+  post 'designate/create', to: 'designate#create'
+
   resources :people do #TODO Delete
     get 'select_employer'
     get 'my_account'

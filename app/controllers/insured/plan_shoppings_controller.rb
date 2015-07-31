@@ -5,7 +5,12 @@ class Insured::PlanShoppingsController < ApplicationController
 
     plan = Plan.find(params.require(:plan_id))
     hbx_enrollment = HbxEnrollment.find(params.require(:id))
-    hbx_enrollment.plan = plan
+    #hbx_enrollment.plan = plan
+
+    household = hbx_enrollment.household
+    household.hbx_enrollments.where(id: hbx_enrollment.id).update_all(plan_id: plan.id)
+    household.hbx_enrollments.active.ne(id: hbx_enrollment.id).update_all(is_active: false)
+
     benefit_group = hbx_enrollment.benefit_group
     reference_plan = benefit_group.reference_plan
     decorated_plan = PlanCostDecorator.new(plan, hbx_enrollment, benefit_group, reference_plan)

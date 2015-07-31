@@ -9,11 +9,13 @@ RSpec.describe "group_selection/new.html.erb" do
     let(:family_member2) { double(id: "family_member", primary_relationship: "parent", dob: Date.new(1990,10,10), full_name: "member") }
     let(:family_member3) { double(id: "family_member", primary_relationship: "spouse", dob: Date.new(1990,10,10), full_name: "member") }
     let(:coverage_household) { double(family_members: [family_member1, family_member2, family_member3]) }
+    let(:family) {double(current_enrollment_eligibility_reasons: [])}
 
     before(:each) do
       assign(:person, person)
       assign(:employee_role, employee_role)
       assign(:coverage_household, coverage_household)
+      assign(:family, family)
       allow(employee_role).to receive(:benefit_group).and_return(benefit_group)
       allow(family_member1).to receive(:is_primary_applicant?).and_return(true)
       allow(family_member2).to receive(:is_primary_applicant?).and_return(false)
@@ -21,6 +23,7 @@ RSpec.describe "group_selection/new.html.erb" do
 
       controller.request.path_parameters[:person_id] = person.id
       controller.request.path_parameters[:employee_role_id] = employee_role.id
+      stub_template "group_selection/enrollment_eligibility_reasons" => ""
       render :template => "group_selection/new.html.erb"
     end
 
@@ -94,11 +97,13 @@ RSpec.describe "group_selection/new.html.erb" do
     let(:person) { instance_double("Person", id: "Person.id") }
     let(:coverage_household) { instance_double("CoverageHousehold", family_members: family_members) }
     let(:employee_role) { instance_double("EmployeeRole", id: "EmployeeRole.id", benefit_group: new_benefit_group) }
+    let(:family) {double(current_enrollment_eligibility_reasons: [])}
 
     before :each do
       assign :person, person
       assign :employee_role, employee_role
       assign :coverage_household, coverage_household
+      assign :family, family
       render file: "group_selection/new.html.erb"
     end
 
@@ -115,6 +120,7 @@ RSpec.describe "group_selection/new.html.erb" do
     let(:benefit_group) { FactoryGirl.create(:benefit_group) }
     let(:coverage_household) { double(family_members: []) }
     let(:hbx_enrollment) {double(coverage_terminated?: false, id: "hbx_id")}
+    let(:family) {double(current_enrollment_eligibility_reasons: [])}
 
     before :each do
       allow(employee_role).to receive(:benefit_group).and_return(benefit_group)
@@ -123,6 +129,7 @@ RSpec.describe "group_selection/new.html.erb" do
       assign :coverage_household, coverage_household
       assign :change_plan, true
       assign :hbx_enrollment, hbx_enrollment
+      assign :family, family
     end
 
     it "should display title" do

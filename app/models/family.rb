@@ -108,6 +108,11 @@ class Family
     current_special_enrollment_periods.collect do |sep|
       EnrollmentEligibilityReason.new(sep)
     end + current_eligible_open_enrollments
+
+    #FIXME hard code for process first
+    employer_profile1 = Organization.find_by(legal_name: "Spacely's Sprockets, Inc").employer_profile
+    employer_profile2 = Organization.find_by(legal_name: "Cogswell Cogs, Inc").employer_profile
+    [EnrollmentEligibilityReason.new(employer_profile1), EnrollmentEligibilityReason.new(employer_profile2)]
   end
 
   def is_under_open_enrollment?

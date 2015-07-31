@@ -7,10 +7,22 @@ class EnrollmentEligibilityReason
   end
 
   def provider=(new_provider_object, date_of_reason = TimeKeeper.date_of_record)
-    @provider = ReasonProvider.new(new_provider_object)
+    #@provider = ReasonProvider.new(new_provider_object)
+    @reason_provider = reason_new(new_provider_object)
   end
 
-  private
+  #private
+
+  def reason_new(provider)
+      case provider.class
+      when SpecialEnrollmentPeriod
+        SpecialEnrollmentPeriodReasonProvider.new(provider)
+      when EmployerProfile
+        EmployerProfileReasonProvider.new(provider)
+      else
+        raise ArgumentError.new("invalid provider class: #{provider.class}")
+      end
+  end
 
   class ReasonProvider
     def initialize(provider)

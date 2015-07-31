@@ -2,13 +2,15 @@ require 'rails_helper'
 
 RSpec.describe Insured::PlanShoppingsController, :type => :controller do
   let(:plan) { double(id: "plan_id") }
-  let(:hbx_enrollment) { double }
+  let(:hbx_enrollment) { double(id: "hbx_id") }
   let(:benefit_group) {double}
   let(:reference_plan) {double}
   let(:usermailer) {double}
   let(:person) { FactoryGirl.create(:person) }
   let(:user) { FactoryGirl.create(:user, person: person) }
   let(:employee_role) { EmployeeRole.new }
+  let(:household) {double(hbx_enrollments: hbx_enrollments)}
+  let(:hbx_enrollments) {double}
 
   context "POST checkout" do
     before do
@@ -25,6 +27,12 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
       allow(usermailer).to receive(:deliver_now).and_return(true)
       allow(hbx_enrollment).to receive(:employee_role).and_return(employee_role)
       allow(employee_role).to receive(:hired_on).and_return(TimeKeeper.date_of_record + 10.days)
+      allow(hbx_enrollment).to receive(:household).and_return(household)
+      allow(household).to receive(:hbx_enrollments).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:where).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:active).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:ne).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:update_all).and_return(true)
     end
 
     it "returns http success" do

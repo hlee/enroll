@@ -23,6 +23,8 @@ class EmployeeRole
 
   accepts_nested_attributes_for :person
 
+  scope :active, ->{ where(is_active: true).where(:created_at.ne => nil) }
+
   before_save :termination_date_must_follow_hire_date
 
   # hacky fix for nested attributes
@@ -66,7 +68,7 @@ class EmployeeRole
   end
 
   def benefit_group
-    census_employee.published_benefit_group
+    census_employee.try(:published_benefit_group) || BenefitGroup.find(benefit_group_id)
   end
 
   def new_census_employee=(new_census_employee)

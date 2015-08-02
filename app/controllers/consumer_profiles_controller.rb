@@ -13,7 +13,7 @@ class ConsumerProfilesController < ApplicationController
     @qualifying_life_events = QualifyingLifeEventKind.all
     @hbx_enrollments = @family.try(:latest_household).try(:hbx_enrollments).active || []
 
-    @employee_role = @employee_roles.first
+    @employee_role = @employee_roles.active.first
 
     respond_to do |format|
       format.html

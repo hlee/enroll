@@ -16,15 +16,10 @@ class GroupSelectionController < ApplicationController
       BSON::ObjectId.from_string(family_member_id)
     end
 
-    if keep_existing_plan or change_plan.present? or @family.latest_household.try(:hbx_enrollments).try(:present?)
-      hbx_enrollment = @family.latest_household.hbx_enrollments.active.last
-      hbx_enrollment.rebuild_members_by_coverage_household(coverage_household: @coverage_household)
-    else
-      hbx_enrollment = HbxEnrollment.new_from(
-        employee_role: @employee_role,
-        coverage_household: @coverage_household,
-        benefit_group: @employee_role.benefit_group)
-    end
+    hbx_enrollment = HbxEnrollment.new_from(
+      employee_role: @employee_role,
+      coverage_household: @coverage_household,
+      benefit_group: @employee_role.benefit_group)
 
     hbx_enrollment.hbx_enrollment_members = hbx_enrollment.hbx_enrollment_members.select do |member|
       family_member_ids.include? member.applicant_id
@@ -35,7 +30,7 @@ class GroupSelectionController < ApplicationController
       elsif change_plan.present?
         redirect_to insured_plan_shopping_path(:id => hbx_enrollment.id, change_plan: change_plan)
       else
-        hbx_enrollment.benefit_group_assignment.update(hbx_enrollment_id: hbx_enrollment.id)
+        hbx_enrollment.benefit_group_assignment.update(hbx_enrollment_id: hbx_enrollment.id) if hbx_enrollment.benefit_group_assignment.present?
         redirect_to insured_plan_shopping_path(:id => hbx_enrollment.id)
       end
     else

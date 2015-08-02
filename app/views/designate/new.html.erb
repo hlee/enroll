@@ -1,0 +1,69 @@
+<div class="container">
+  <div class="row">
+    <div class="col-lg-7 col-md-7 col-sm-8 col-xs-12">
+      <h3>Eligibility Enrollment Reasons</h3>
+      <%= form_tag(:designate_create) do %>
+        <%= hidden_field_tag(:person_id, @person.id) %>
+        <%= hidden_field_tag(:employee_role_id, @employee_role.id) %>
+        <%= hidden_field_tag(:coverage_household_id, @coverage_household_id) %>
+
+        <div class="table-responsive table-border">
+          <table class="table table-wrapper table-condensed group-selection-tbl">
+            <tbody>
+              <% if @employee_role.present? %>
+                <tr>
+                  <td width='20'>
+                    <%= radio_button_tag("eligibility_reasons", @employee_role.try(:employer_profile).try(:id)) %>
+                  </td>
+                  <td>
+                    <%= label_tag("eligibility_reasons_#{@employee_role.try(:employer_profile).try(:id)}", "origin (#{@employee_role.employer_profile.organization.legal_name})") %>
+                  </td>
+                </tr>
+              <% end %>
+
+              <% if @family.current_enrollment_eligibility_reasons.size > 0 %>
+                <% @family.current_enrollment_eligibility_reasons.each_with_index do |reason, index| %>
+                  <tr>
+                    <% employer_profile = reason.reason_provider.try(:employer_profile) %>
+                    <td width='20'><%= radio_button_tag("eligibility_reasons", employer_profile.try(:id), class: "required") %></td>
+                    <td>
+                      <%= label_tag("eligibility_reasons_#{employer_profile.try(:id)}", "#{reason.reason} (#{employer_profile.try(:organization).try(:legal_name)})") %>
+                    </td>
+                  </tr>
+                <% end %>
+              <% end %>
+              <tr>
+                <td width='20'>
+                  <%= radio_button_tag("eligibility_reasons", @employer_profile_for_individual.id) %>
+                </td>
+                <td>
+                  <%= label_tag("eligibility_reasons_#{@employer_profile_for_individual.id}", "individual") %>
+                </td>
+              </tr>
+              <tr>
+                <td width='20'>
+                  <%= radio_button_tag("eligibility_reasons", @employer_profile_for_dental.id) %>
+                </td>
+                <td>
+                  <%= label_tag("eligibility_reasons_#{@employer_profile_for_dental.id}", "standalone") %>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <br />
+        <%= submit_tag 'Submit', class: 'btn btn-lg btn-primary' %>
+      <% end %>
+    </div>
+
+    <div class="col-lg-3 col-md-3 col-sm-3 col-xs-12 col-md-offset-2 col-sm-offset-1 right-section">
+      <% if @change_plan.blank? %>
+        <%= render  partial: 'shared/signup_progress', locals: {step: '4'} %>
+      <% elsif @change_plan == "change" %>
+        <%= render partial: 'shared/qle_progress', locals: {step: '2'} %>
+      <% elsif @change_plan == "change_plan" %>
+        <%= render partial: 'shared/shop_for_plans_progress', locals: {step: '1'} %>
+      <% end %>
+    </div>
+  </div>
+</div>

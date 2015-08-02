@@ -1,4 +1,3 @@
-<%= render partial: "enrollment_eligibility_reasons"%>
 <div class="container">
   <div class="row">
     <%= form_tag(:group_selection_create) do %>
@@ -31,7 +30,7 @@
           </div>
 
           <br>
-          <% if @change_plan.present? %>
+          <% if @change_plan.present? and @hbx_enrollment.employee_role_id.to_s == @employee_role.id.to_s %>
             <%= hidden_field_tag 'change_plan', @change_plan %>
             <h4><strong>What do you like to do?</strong></h4>
             <% if @hbx_enrollment.present? and !@hbx_enrollment.try(:coverage_terminated?) %>

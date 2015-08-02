@@ -105,14 +105,17 @@ class Family
   end
 
   def current_enrollment_eligibility_reasons
-    current_special_enrollment_periods.collect do |sep|
+    reasons = current_special_enrollment_periods.collect do |sep|
       EnrollmentEligibilityReason.new(sep)
     end + current_eligible_open_enrollments
 
     #FIXME hard code for process first
-    employer_profile1 = Organization.find_by(legal_name: "Spacely's Sprockets, Inc").employer_profile
-    employer_profile2 = Organization.find_by(legal_name: "Cogswell Cogs, Inc").employer_profile
-    [EnrollmentEligibilityReason.new(employer_profile1), EnrollmentEligibilityReason.new(employer_profile2)]
+    if reasons.blank?
+    employer_profile1 = Organization.where(legal_name: "Spacely's Sprockets, Inc").last.try(:employer_profile)
+    employer_profile2 = Organization.where(legal_name: "Cogswell Cogs, Inc").last.try(:employer_profile)
+    reasons = [EnrollmentEligibilityReason.new(employer_profile1), EnrollmentEligibilityReason.new(employer_profile2)]
+    end
+    reasons
   end
 
   def is_under_open_enrollment?

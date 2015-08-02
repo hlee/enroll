@@ -184,6 +184,7 @@ Rails.application.routes.draw do
   post 'group_selection/new', to: 'group_selection#new'
   post 'group_selection/create', to: 'group_selection#create'
 
+  get 'designate/new', to: 'designate#new'
   post 'designate/create', to: 'designate#create'
 
   resources :people do #TODO Delete

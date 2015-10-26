@@ -10,6 +10,7 @@ class CensusEmployee < CensusMember
   field :hired_on, type: Date
   field :employment_terminated_on, type: Date
   field :aasm_state, type: String
+  field :terminated_due_date, type: Date
 
   # Employer for this employee
   field :employer_profile_id, type: BSON::ObjectId
@@ -192,6 +193,11 @@ class CensusEmployee < CensusMember
     email.address
   end
 
+  def terminate_employment_in_future(terminated_on)
+    self.terminated_due_date = terminated_on
+    self.save
+  end
+
   def terminate_employment(terminated_on)
     begin
       terminate_employment!(terminated_on)
@@ -226,6 +232,7 @@ class CensusEmployee < CensusMember
     end
 
     terminate_employee_role
+    self.save
     self
   end
 
@@ -264,6 +271,11 @@ class CensusEmployee < CensusMember
     false
   end
 
+  # TODO
+  def advance_employment_terminated!
+    terminate_employment(terminated_due_date)
+  end
+
   class << self
     def find_all_by_employer_profile(employer_profile)
       unscoped.where(employer_profile_id: employer_profile._id).order_name_asc
@@ -279,7 +291,14 @@ class CensusEmployee < CensusMember
       unscoped.where("benefit_group_assignments.benefit_group_id" => benefit_group._id)
     end
 
+    def advance_day(new_date)
+      census_employees = CensusEmployee.where(terminated_due_date: new_date)
+      return if census_employees.blank?
 
+      census_employees.each do |census_employee|
+        census_employee.advance_employment_terminated!
+      end
+    end
   end
 
   aasm do

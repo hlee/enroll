@@ -95,12 +95,11 @@ class Employers::CensusEmployeesController < ApplicationController
     end
     last_day_of_work = termination_date
     if termination_date.present?
-      @census_employee.terminate_employment(last_day_of_work)
-      @fa = @census_employee.save
+      fa = @census_employee.terminate_employment_in_future(last_day_of_work)
     end
     respond_to do |format|
       format.js {
-        if termination_date.present? and @fa
+        if termination_date.present? and fa
           flash[:notice] = "Successfully terminated Census Employee."
           render text: true
         else

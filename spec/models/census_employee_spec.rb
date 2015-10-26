@@ -582,6 +582,17 @@ RSpec.describe CensusEmployee, type: :model, dbclean: :after_each do
     end
   end
 
+  context "#advance_day" do
+    let(:date) { TimeKeeper.date_of_record }
+    let(:census_employee) { FactoryGirl.create(:census_employee, terminated_due_date: date) }
+
+    it "call advance_employment_terminated" do
+      allow(CensusEmployee).to receive(:where).and_return [census_employee]
+
+      expect(census_employee).to receive(:advance_employment_terminated!)
+      CensusEmployee.advance_day(date)
+    end
+  end
 
   context "Employee is migrated into Enroll database without an EmployeeRole" do
     let(:person) {}

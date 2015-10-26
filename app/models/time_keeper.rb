@@ -65,6 +65,7 @@ class TimeKeeper
     BenefitSponsorship.advance_day(self.date_of_record)
     EmployerProfile.advance_day(self.date_of_record)
     Family.advance_day(self.date_of_record)
+    CensusEmployee.advance_day(self.date_of_record)
   end
 
   def self.with_cache

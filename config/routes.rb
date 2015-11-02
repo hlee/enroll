@@ -2,6 +2,8 @@ Rails.application.routes.draw do
 
   devise_for :users, :controllers => { :registrations => "users/registrations" }
 
+  get :test, to: 'welcome#test'
+
   namespace :users do
     resources :orphans, only: [:index, :show, :destroy]
   end

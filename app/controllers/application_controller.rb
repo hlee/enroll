@@ -23,21 +23,21 @@ class ApplicationController < ActionController::Base
 
   rescue_from Pundit::NotAuthorizedError, with: :access_denied
 
-  rescue_from ActionController::InvalidCrossOriginRequest do |exception|
-    error_message = {
-      :error => {
-        :message => exception.message,
-        :inspected => exception.inspect,
-        :backtrace => exception.backtrace.join("\n")
-      },
-      :url => request.original_url,
-      :method => request.method,
-      :parameters => params.to_s,
-      :source => request.env["HTTP_REFERER"]
-    }
+  #rescue_from ActionController::InvalidCrossOriginRequest do |exception|
+  #  error_message = {
+  #    :error => {
+  #      :message => exception.message,
+  #      :inspected => exception.inspect,
+  #      :backtrace => exception.backtrace.join("\n")
+  #    },
+  #    :url => request.original_url,
+  #    :method => request.method,
+  #    :parameters => params.to_s,
+  #    :source => request.env["HTTP_REFERER"]
+  #  }
 
-    log(JSON.dump(error_message), {:severity => 'critical'})
-  end
+  #  log(JSON.dump(error_message), {:severity => 'critical'})
+  #end
 
   def access_denied
     render file: 'public/403.html', status: 403

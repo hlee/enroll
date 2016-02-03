@@ -8,7 +8,7 @@ class BenefitGroup
 
   PLAN_OPTION_KINDS = %w(single_plan single_carrier metal_level)
   EFFECTIVE_ON_KINDS = %w(date_of_hire first_of_month)
-  OFFSET_KINDS = [0, 30, 60]
+  OFFSET_KINDS = [0, 1, 30, 60]
   TERMINATE_ON_KINDS = %w(end_of_month)
   PERSONAL_RELATIONSHIP_KINDS = [
     :employee,
@@ -19,6 +19,7 @@ class BenefitGroup
   ]
 
   field :title, type: String, default: ""
+  field :description, type: String, default: ""
   field :effective_on_kind, type: String, default: "first_of_month"
   field :terminate_on_kind, type: String, default: "end_of_month"
   field :dental_plan_option_kind, type: String
@@ -51,6 +52,8 @@ class BenefitGroup
   # Array of plan_ids
   field :elected_plan_ids, type: Array, default: []
   field :is_congress, type: Boolean, default: false
+  field :_type, type: String, default: self.name
+
 
   delegate :start_on, :end_on, to: :plan_year
   # accepts_nested_attributes_for :plan_year
@@ -129,7 +132,7 @@ class BenefitGroup
   end
 
   def is_offering_dental?
-    dental_reference_plan_id.present? && elected_dental_plan_ids.any? 
+    dental_reference_plan_id.present? && elected_dental_plan_ids.any?
   end
 
   def is_open_enrollment?
@@ -327,10 +330,12 @@ class BenefitGroup
   end
 
   def self.find(id)
-    organizations = Organization.where({"employer_profile.plan_years.benefit_groups._id" => id })
-    organizations.map(&:employer_profile).lazy.flat_map(&:plan_years).flat_map(&:benefit_groups).select do |bg|
-      bg.id == id
-    end.first
+    ::Caches::RequestScopedCache.lookup(:employer_calculation_cache_for_benefit_groups, id) do
+      organizations = Organization.unscoped.where({"employer_profile.plan_years.benefit_groups._id" => id })
+      organizations.map(&:employer_profile).lazy.flat_map(&:plan_years).flat_map(&:benefit_groups).select do |bg|
+        bg.id == id
+      end.first
+    end
   end
 
 
@@ -414,6 +419,8 @@ class BenefitGroup
     case effective_on_offset
     when 0
       "First of the month following or coinciding with date of hire"
+    when 1
+      "First of the month following date of hire"
     when 30
       "First of the month following 30 days"
     when 60
@@ -425,12 +432,33 @@ class BenefitGroup
     if effective_on_kind == "date_of_hire"
       date_of_hire
     else
+      if effective_on_offset == 1
+        date_of_hire.end_of_month + 1.day
+      else
       if (date_of_hire + effective_on_offset.days).day == 1
         (date_of_hire + effective_on_offset.days)
       else
         (date_of_hire + effective_on_offset.days).end_of_month + 1.day
       end
     end
+    end
+  end
+
+  ## Conversion employees are not allowed to buy coverage through off-exchange plan year
+  def valid_plan_year    
+    if employer_profile.is_coversion_employer?
+      plan_year.coverage_period_contains?(employer_profile.registered_on) ? plan_year.employer_profile.renewing_plan_year : plan_year
+    else
+      plan_year
+    end
+  end
+
+  def date_of_hire_effective_on_for(date_of_hire)
+    [valid_plan_year.start_on, date_of_hire].max
+  end
+
+  def first_of_month_effective_on_for(date_of_hire)
+    [valid_plan_year.start_on, eligible_on(date_of_hire)].max
   end
 
 private
@@ -452,19 +480,6 @@ private
 
   def cents_to_dollars(amount_in_cents)
     (Rational(amount_in_cents) / Rational(100)).to_f if amount_in_cents
-  end
-
-  def date_of_hire_effective_on_for(date_of_hire)
-    [plan_year.start_on, date_of_hire].max
-  end
-
-  def first_of_month_effective_on_for(date_of_hire)
-    if plan_year.employer_profile.profile_source.to_s == 'conversion'
-      if renewing_plan_year = plan_year.employer_profile.renewing_plan_year
-        return [renewing_plan_year.start_on, date_of_hire].max
-      end
-    end
-    [plan_year.start_on, eligible_on(date_of_hire)].max
   end
 
   def is_eligible_to_enroll_on?(date_of_hire, enrollment_date = TimeKeeper.date_of_record)

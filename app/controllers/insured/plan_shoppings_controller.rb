@@ -7,7 +7,7 @@ class Insured::PlanShoppingsController < ApplicationController
   include Acapi::Notifiers
   extend Acapi::Notifiers
   include Aptc
-  before_action :set_current_person, :only => [:receipt, :thankyou, :waive, :show, :plans, :checkout]
+  before_action :set_current_person, :only => [:receipt, :thankyou, :waive, :show, :plans, :checkout, :terminate]
   before_action :set_kind_for_market_and_coverage, only: [:thankyou, :show, :plans, :checkout, :receipt]
 
   def checkout
@@ -22,6 +22,9 @@ class Insured::PlanShoppingsController < ApplicationController
     end
 
     if !plan_selection.may_select_coverage?
+      if plan_selection.hbx_enrollment.errors.present?
+        flash[:error] = plan_selection.hbx_enrollment.errors.full_messages
+      end
       redirect_to :back
       return
     end
@@ -123,12 +126,14 @@ class Insured::PlanShoppingsController < ApplicationController
     end
 
     if hbx_enrollment.may_waive_coverage? and waiver_reason.present? and hbx_enrollment.valid?
-      hbx_enrollment.update_current(aasm_state: "inactive", waiver_reason: waiver_reason)
-      hbx_enrollment.propogate_waiver
+      hbx_enrollment.waive_coverage_by_benefit_group_assignment(waiver_reason)
       redirect_to print_waiver_insured_plan_shopping_path(hbx_enrollment), notice: "Waive Coverage Successful"
     else
       redirect_to new_insured_group_selection_path(person_id: @person.id, change_plan: 'change_plan', hbx_enrollment_id: hbx_enrollment.id), alert: "Waive Coverage Failed"
     end
+  rescue => e
+    log(e.message, :severity=>'error')
+    redirect_to new_insured_group_selection_path(person_id: @person.id, change_plan: 'change_plan', hbx_enrollment_id: hbx_enrollment.id), alert: "Waive Coverage Failed"
   end
 
   def print_waiver
@@ -138,9 +143,10 @@ class Insured::PlanShoppingsController < ApplicationController
   def terminate
     hbx_enrollment = HbxEnrollment.find(params.require(:id))
 
-    if hbx_enrollment.may_terminate_coverage?
-      hbx_enrollment.update_current(aasm_state: "coverage_terminated", terminated_on: TimeKeeper.date_of_record.end_of_month)
-      hbx_enrollment.propogate_terminate
+    if hbx_enrollment.may_schedule_coverage_termination?
+      hbx_enrollment.termination_submitted_on = TimeKeeper.datetime_of_record
+      hbx_enrollment.terminate_reason = params[:terminate_reason] if params[:terminate_reason].present?
+      hbx_enrollment.schedule_coverage_termination!(@person.primary_family.terminate_date_for_shop_by_enrollment(hbx_enrollment))
 
       redirect_to family_account_path
     else

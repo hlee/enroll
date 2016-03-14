@@ -262,8 +262,11 @@ Rails.application.routes.draw do
     root 'profiles#new'
     resources :profiles do
       collection do
+        get :new_agency_staff
         get :new_agency
         get :messages
+        get :agency_messages
+        get :inbox
         get :edit_staff
         post :update_staff
       end
@@ -272,6 +275,9 @@ Rails.application.routes.draw do
         get :families
         get :staffs
       end
+    end
+    resources :inboxes, only: [:new, :create, :show, :destroy] do
+      get :msg_to_portal
     end
   end
 

@@ -895,4 +895,18 @@ describe Person do
       end
     end
   end
+
+  describe "consumer_fields_validations" do
+    let(:person) {FactoryGirl.create(:person)}
+    let(:employer_staff_role) {FactoryGirl.create(:employer_staff_role, person: person)}
+
+    it "should get invalid msg" do
+      person.is_consumer_role = "true"
+      person.no_dc_address = true
+      person.no_dc_address_reason = "homeless"
+      person.mailing_address.destroy if person.has_mailing_address?
+      expect(person.save).to eq false
+      expect(person.errors[:base].to_s).to match /We need your mailing address so that your health insurance plan can send important documents like invoices and insurance cards. If you don’t check this address regularly, be sure to indicate that you want electronic notices below. You may also want to call your health insurance company to request electronic notifications from them/
+    end
+  end
 end

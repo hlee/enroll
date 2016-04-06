@@ -226,6 +226,10 @@ class Person
       elsif tribal_id.present? && !tribal_id.match("[0-9]{9}")
         self.errors.add(:base, "Tribal id must be 9 digits")
       end
+
+      if no_dc_address && no_dc_address_reason.present? && !has_mailing_address?
+        self.errors.add(:base, 'We need your mailing address so that your health insurance plan can send important documents like invoices and insurance cards. If you don’t check this address regularly, be sure to indicate that you want electronic notices below. You may also want to call your health insurance company to request electronic notifications from them.')
+      end
     end
   end
 

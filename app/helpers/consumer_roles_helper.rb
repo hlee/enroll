@@ -69,4 +69,8 @@ module ConsumerRolesHelper
       "Outstanding verification"
     end
   end
+
+  def required_for_consumer_address(required, has_dc_adress)
+    required.present? && has_dc_adress
+  end
 end

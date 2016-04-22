@@ -397,6 +397,7 @@ When(/^.+ completes? the matched employee form for (.*)$/) do |named_person|
   find('.interaction-click-control-click-here').click
   find('.interaction-click-control-close').click
 
+  sleep 3
   wait_for_ajax(10)
   find("#person_addresses_attributes_0_address_1", :wait => 10).click
   find("#person_addresses_attributes_0_address_2").click
@@ -678,6 +679,7 @@ And(/I select three plans to compare/) do
     page.all("span.checkbox-custom-label")[1].click
     page.all("span.checkbox-custom-label")[2].click
     find(:xpath, '//*[@id="select_plan_wrapper"]/div/div[1]/div/div[1]/p[2]/a').click
+    sleep 3
     wait_for_ajax(10)
     expect(page).to have_content("Choose Plan - Compare Selected Plans")
     find(:xpath, '//*[@id="plan-details-modal-body"]/div[2]/button[2]').trigger('click')

@@ -607,7 +607,7 @@ describe Person do
       person1.user_id = user_id
       person2.user_id = user_id
       person1.save!
-      expect { person2.save! }.to raise_error
+      expect { person2.save! }.to raise_error(Mongo::Error::OperationFailure)
     end
 
   end

@@ -3,15 +3,13 @@ When(/^.+ visits the HBX Broker Registration form$/) do
   find(".interaction-click-control-broker-registration").click
 end
 
-When(/^Primary Broker clicks on New Broker Agency Tab$/) do
-  find(:xpath, "//label[input[@id='new_broker_agency']]").click
-end
-
 When(/^Primary Broker should see the New Broker Agency form$/) do
   expect(page).to have_css("#broker_agency_form")
 end
 
 When(/^.+ enters personal information$/) do
+  visit "/broker_registration"
+
   fill_in 'organization[first_name]', with: 'Ricky'
   fill_in 'organization[last_name]', with: 'Martin'
   fill_in 'jq_datepicker_ignore_organization[dob]', with: '10/10/1984'
@@ -25,8 +23,9 @@ And(/^.+ enters broker agency information$/) do
   fill_in 'organization[dba]', with: "Logistics Inc"
   fill_in 'organization[fein]', with: "890890891"
 
-  find(:xpath, "//p[@class='label'][contains(., 'Select Entity Kind')]").click
-  find(:xpath, "//li[contains(., 'C Corporation')]").click
+  # this field was hidden 4/13/2016
+  # find(:xpath, "//p[@class='label'][contains(., 'Select Entity Kind')]").click
+  # find(:xpath, "//li[contains(., 'C Corporation')]").click
 
   fill_in 'organization[home_page]', with: 'www.logistics.example.com'
 
@@ -41,12 +40,8 @@ And(/^.+ enters broker agency information$/) do
   find(:xpath, "//label[input[@name='organization[working_hours]']]").trigger('click')
 end
 
-And(/^(.+) enters? office locations information$/) do |named_person|
-  enter_office_location(default_office_location)
-end
-
 And(/^.+ clicks? on Create Broker Agency$/) do
-  find('.interaction-click-control-create-broker-agency').click
+  click_button "Create Broker Agency"
 end
 
 Then(/^.+ should see broker registration successful message$/) do
@@ -117,6 +112,8 @@ When(/^.+ clicks? on Browse Brokers button$/) do
 end
 
 Then(/^.+ should see broker agencies index view$/) do
+  #TODO add AJAX handling
+  wait_for_ajax(3)
   expect(page).to have_content('Broker Agencies')
 end
 
@@ -194,13 +191,12 @@ Then(/^.* creates and publishes a plan year$/) do
   fill_in "plan_year[benefit_groups_attributes][0][relationship_benefits_attributes][3][premium_pct]", with: 50
 
   find(:xpath, '//li/label[@for="plan_year_benefit_groups_attributes_0_plan_option_kind_single_carrier"]').click
-  sleep 1
+  wait_for_ajax(10)
   find('.carriers-tab a').click
-  sleep 1
+  wait_for_ajax(10)
   find('.reference-plan label').click
-  sleep 1
+  wait_for_ajax(10)
   find('.interaction-click-control-create-plan-year').trigger('click')
-
   find('.alert-notice')
   find('.interaction-click-control-benefits').click
   find('.interaction-click-control-publish-plan-year').click
@@ -210,13 +206,14 @@ Then(/^.+ sees employer census family created$/) do
   expect(page).to have_content('successfully created')
 end
 
-Then(/^.+ should see the matched employee record form$/) do
+Then(/^(?:(?!Employee).)+ should see the matched employee record form$/) do
   screenshot("broker_employer_search_results")
   expect(page).to have_content('Legal LLC')
 end
 
 Then(/^Broker Assisted is a family$/) do
-  sleep 1
+  #sleep 1
+  wait_for_ajax
   find(:xpath, "//li[contains(., 'Families')]/a").click
   expect(page).to have_content('Broker Assisted')
 end

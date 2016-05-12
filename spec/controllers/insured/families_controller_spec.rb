@@ -552,7 +552,6 @@ RSpec.describe Insured::FamiliesController do
     end
   end
 
-
   describe "GET upload_notice_form" do
     let(:user) { FactoryGirl.create(:user, person: person, roles: ["hbx_staff"]) }
     let(:person) { FactoryGirl.create(:person) }
@@ -623,6 +622,24 @@ RSpec.describe Insured::FamiliesController do
       it "adds a message to person inbox" do
         expect(person2.inbox.messages.count).to eq (2) #1 welcome message, 1 upload notification
       end
+    end
+  end
+
+  describe "GET purchase" do
+    let(:hbx_enrollment) { HbxEnrollment.new }
+    let(:family) { FactoryGirl.create(:family, :with_primary_family_member) }
+    before :each do
+      allow(HbxEnrollment).to receive(:find).and_return hbx_enrollment
+      allow(family).to receive(:is_eligible_to_enroll?).and_return true
+      get :purchase, id: family.id, hbx_enrollment_id: hbx_enrollment.id, terminate: 'terminate'
+    end
+
+    it "should get hbx_enrollment" do
+      expect(assigns(:enrollment)).to eq hbx_enrollment
+    end
+
+    it "should get terminate" do
+      expect(assigns(:terminate)).to eq 'terminate'
     end
   end
 end

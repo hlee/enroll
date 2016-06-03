@@ -97,20 +97,24 @@ RSpec.describe GeneralAgencyProfile, dbclean: :after_each do
       context "with approved general_agency_profiles" do
         before do
           allow(GeneralAgencyProfile).to receive(:all).and_return([general_agency_profile_approved,general_agency_profile_applicant1])
+          allow(general_agency_profile_approved).to receive(:current_state).and_return('Active')
         end
         it "should only gett approved general agency profiles" do
           expect(GeneralAgencyProfile.all_by_broker_role(broker_role,:approved_only => true)).to eq [general_agency_profile_approved]
         end
       end
+
       context "with favorite general_agency_profile for broker_role" do
         before do
           allow(GeneralAgencyProfile).to receive(:all).and_return([general_agency_profile_approved,general_agency_profile_applicant1])
           allow(broker_role).to receive(:favorite_general_agencies).and_return([general_agency_profile_approved])
+          allow(general_agency_profile_approved).to receive(:current_state).and_return('Active')
         end
-        it "should only gett approved general agency profiles" do
+        it "should only get approved general agency profiles" do
           expect(GeneralAgencyProfile.all_by_broker_role(broker_role,:approved_only => true)).to eq [general_agency_profile_approved]
         end
       end
+
       context "without approved general_agency_profiles" do
         before do
           allow(GeneralAgencyProfile).to receive(:all).and_return([general_agency_profile_applicant1,general_agency_profile_applicant2])
@@ -127,11 +131,6 @@ RSpec.describe GeneralAgencyProfile, dbclean: :after_each do
     let(:employer_profile) { FactoryGirl.create(:employer_profile) }
     let(:person) { FactoryGirl.create(:person, :with_family) }
     let(:general_agency_staff_role) { FactoryGirl.create(:general_agency_staff_role, person:person, general_agency_profile_id: general_agency_profile.id) }
-
-    it "current_state" do
-      general_agency_profile.aasm_state = "is_approved"
-      expect(general_agency_profile.current_state).to eq "Is Approved"
-    end
 
     it "legal_name" do
       expect(general_agency_profile.legal_name).to eq general_agency_profile.organization.legal_name
@@ -164,6 +163,10 @@ RSpec.describe GeneralAgencyProfile, dbclean: :after_each do
 
       it "current_staff_state" do
         expect(general_agency_profile.current_staff_state).to eq general_agency_staff_role.current_state
+      end
+
+      it "current_state" do
+        expect(general_agency_profile.current_state).to eq general_agency_staff_role.current_state.humanize.titleize
       end
     end
   end

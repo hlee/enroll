@@ -34,10 +34,10 @@ RSpec.describe "general_agencies/profiles/_index.html.erb", dbclean: :after_each
   end
 
   it "should have input for status" do
-    expect(rendered).to have_selector('input[value="is_applicant"]')
-    expect(rendered).to have_selector('input[value="is_approved"]')
-    expect(rendered).to have_selector('input[value="is_rejected"]')
-    expect(rendered).to have_selector('input[value="is_suspended"]')
+    expect(rendered).to have_selector('input[value="applicant"]')
+    expect(rendered).to have_selector('input[value="certified"]')
+    expect(rendered).to have_selector('input[value="decertified"]')
+    expect(rendered).to have_selector('input[value="denied"]')
     expect(rendered).to have_selector('input[value="all"]')
   end
 end

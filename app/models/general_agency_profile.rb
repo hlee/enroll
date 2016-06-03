@@ -101,7 +101,7 @@ class GeneralAgencyProfile
   end
 
   def current_state
-    aasm_state.humanize.titleize
+    current_staff_state.humanize.titleize
   end
 
   def applicant?
@@ -120,7 +120,7 @@ class GeneralAgencyProfile
     def all_by_broker_role(broker_role, options={})
       favorite_general_agency_ids = broker_role.favorite_general_agencies.map(&:general_agency_profile_id) rescue [] 
       all_ga = if options[:approved_only]
-                 all.select{|ga| ga.aasm_state == 'is_approved'}
+                 all.select{|ga| ga.current_state == 'Active'}
                else
                  all
                end

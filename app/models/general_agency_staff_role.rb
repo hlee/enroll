@@ -25,8 +25,6 @@ class GeneralAgencyStaffRole
     state :active
     state :denied
     state :decertified
-    state :general_agency_declined
-    state :general_agency_terminated
 
     event :approve, :after => [:record_transition, :send_invitation, :update_general_agency_profile] do
       transitions from: :applicant, to: :active 

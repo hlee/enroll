@@ -24,7 +24,8 @@
     <br />
 
     <% if @terminate.present? %>
-      <%= link_to("Terminate Plan", terminate_insured_plan_shopping_path(@enrollment.id), {:class => "btn btn-primary pull-right", :method => :post}) %>
+      <%= link_to 'Terminate Plan', '#', data: {toggle: "modal", target: "#terminate_confirm"}, class: 'btn btn-primary pull-right' %>
+      <%= render :partial => "terminate_confirmation", :locals => {:enrollment => @enrollment } %>
     <% else %>
       <%= link_to purchase_or_confirm, checkout_insured_plan_shopping_path(@enrollment.id, :plan_id => @plan.id, change_plan: @change_plan), class: 'btn btn-primary pull-right', method: :post %>
     <% end %>

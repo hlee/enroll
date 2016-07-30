@@ -1,6 +1,6 @@
 <% plan_carrier = Caches::MongoidCache.lookup(CarrierProfile, plan.carrier_profile_id) { plan.carrier_profile } %>
 
-<div class="module plan-row panel panel-default" data-plan-id="<%= plan.id %>" data-plan-category="<%= plan.plan_type ? plan.plan_type.downcase : "" %>" data-plan-metal-level="<%= plan.metal_level.downcase %>" data-plan-metal-network="<%= plan.nationwide ? "nationwide" : "dc metro" %>" data-plan-metal-premium="<%= plan.total_employee_cost %>" data-plan-metal-deductible="<%= plan.deductible == "Not Applicable" ? "$0" : plan.deductible %>" data-plan-name="<%= plan.name %>" data-plan-carrier="<%= plan_carrier.try(:legal_name) %>" data-plan-hsa-eligibility="<%= @plan_hsa_status[plan.id.to_s] %>" data-plan-ehb="<%= plan.ehb %>" data-can-use-aptc="<%= plan.can_use_aptc? %>">
+<div class="module plan-row panel panel-default" data-plan-id="<%= plan.id %>" data-plan-category="<%= plan.plan_type ? plan.plan_type.downcase : "" %>" data-plan-metal-level="<%= plan.metal_level.downcase %>" data-plan-metal-network="<%= plan.nationwide ? "nationwide" : "dc metro" %>" data-plan-metal-premium="<%= plan.total_employee_cost %>" data-plan-metal-deductible="<%= plan.deductible == "Not Applicable" ? "$0" : plan.deductible %>" data-plan-name="<%= plan.name %>" data-plan-carrier="<%= display_carrier_name(plan_carrier) %>" data-plan-hsa-eligibility="<%= @plan_hsa_status[plan.id.to_s] %>" data-plan-ehb="<%= plan.ehb %>" data-can-use-aptc="<%= plan.can_use_aptc? %>">
   <div class="panel-body">
     <div class="row">
       <% if plan.try(:is_standard_plan) %>
@@ -13,7 +13,7 @@
       <% end %>
     </div>
     <div class="row">
-      <div class="col-md-2 col-sm-2"><%= display_carrier_logo(plan_carrier.legal_name, {width: 80}) %></div>
+      <div class="col-md-2 col-sm-2"><%= display_carrier_logo(display_carrier_name(plan_carrier), {width: 80}) %></div>
       <div class="col-md-7">
         <h3 class="no-buffer">
           <%= link_to summary_products_plans_path({:standard_component_id => plan.hios_id, hbx_enrollment_id: @hbx_enrollment.id, active_year: plan.try(:active_year), market_kind: @market_kind, coverage_kind: @coverage_kind}), {:remote => true} do %>
@@ -23,7 +23,7 @@
             <%= plan.name %>
           <% end %>
           <br/>
-          <small><%= plan_carrier.legal_name %></small>
+          <small><%= display_carrier_name(plan_carrier) %></small>
         </h3>
       </div>
       <div class="col-md-3">

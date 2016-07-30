@@ -37,6 +37,11 @@ When(/^I clicks on continue button for individual$/) do
   find('.interaction-click-control-continue').click
 end
 
+When(/^.+ click special continue button$/) do
+  find('span.btn-primary').trigger('click')
+  sleep(1)
+end
+
 Then(/^I should see the individual register page$/) do
   expect(page).to have_content("Personal Information")
 end
@@ -45,7 +50,7 @@ When(/I should click continue button for verfify person info/) do
   find('.interaction-click-control-continue').click
 end
 
-When(/^(.*) goes to register as an individual$/) do |named_person|
+When(/^(.*) goes to register as an individual for newhire$/) do |named_person|
   person = people_for_newhire[named_person]
   fill_in "person[first_name]", :with => person[:first_name]
   fill_in "person[last_name]", :with => person[:last_name]
@@ -53,6 +58,10 @@ When(/^(.*) goes to register as an individual$/) do |named_person|
   fill_in "person[ssn]", :with => person[:ssn]
   find(:xpath, '//label[@for="radio_male"]').click
   screenshot("register")
+end
+
+Then(/^.+ should see successful msg/) do
+  expect(page).to have_content('Thank you. Next, we need to verify if you or you and your family are eligible to enroll in coverage through DC Health Link. Please select CONTINUE.')
 end
 
 Then(/^Jack Ivl should see confirm page$/) do
@@ -124,13 +133,21 @@ And(/Employer should see the status of employee role linked/) do
   expect(page).to have_content("Employee Role Linked")
 end
 
-Then(/^(.*) login to the Insured portal$/) do |named_person|
-  person = people_for_newhire[named_person]
-  expect(page).to have_content('Sign In Existing Account')
+When(/^.+ click sign in existing account$/) do
   find('.interaction-click-control-sign-in-existing-account').click
+  click_link "Sign In Existing Account"
+end
 
-  fill_in "user[email]", :with => person[:email]
-  find('#user_email').set(person[:email])
+Then(/^.+ should see sign in page/) do
+  expect(page).to have_content('Sign In')
+  expect(page).not_to have_content('Sign In Existing Account')
+end
+
+When(/^(.*) login to the Insured portal$/) do |named_person|
+  person = people_for_newhire[named_person]
+
+  fill_in "user[login]", :with => person[:email]
+  find('#user_login').set(person[:email])
   fill_in "user[password]", :with => person[:password]
   find('.interaction-click-control-sign-in').click
 end
@@ -149,7 +166,9 @@ And(/I should not see employer hire message/) do
 end
 
 And(/^Jack Ivl click on continue button on group selection page after hired by employer$/) do
-  find(".interaction-click-control-continue").click
+  find(".interaction-click-control-continue", wait: 10).click
+  wait_for_ajax(10)
+  find('.plan-select', :wait => 10)
 end
 
 Then(/^Employer should see a form to enter information about employee, address and dependents details for Jack Ivl$/) do
@@ -157,7 +176,7 @@ Then(/^Employer should see a form to enter information about employee, address a
   # Census Employee
   fill_in 'census_employee[first_name]', with: person[:first_name]
   fill_in 'census_employee[last_name]', with: person[:last_name]
-  find(:xpath, "//p[contains(., 'SUFFIX')]").click
+  find(:xpath, "//p[contains(., 'NONE')]").click
   find(:xpath, "//li[contains(., 'Jr.')]").click
 
   fill_in 'jq_datepicker_ignore_census_employee[dob]', :with => person[:dob]

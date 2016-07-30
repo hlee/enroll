@@ -8,11 +8,12 @@ Feature: Newhire
       And user should see your information page
       When I clicks on continue button for individual
       Then I should see the individual register page
-      When Jack Ivl goes to register as an individual
-      When I clicks on continue button for individual
+      When Jack Ivl goes to register as an individual for newhire
+      When I click special continue button
+      Then I should see successful msg
       When I should click continue button for verfify person info
       Then Individual should see a form to enter personal information
-      When I clicks on continue button for individual
+      When I click special continue button
       Then Individual agrees to the privacy agreeement
       Then Individual should see identity verification page and clicks on submit
       Then Individual should see the dependents form
@@ -49,12 +50,16 @@ Feature: Newhire
       And Employer should see employer census family created success message for Jack Ivl
       And Employer should see the status of employee role linked
       Then Employer logs out
+
       When I visit the Insured portal
-      Then Jack Ivl login to the Insured portal
+      When I click sign in existing account
+      Then I should see sign in page
+      When Jack Ivl login to the Insured portal
       Then I should see a successful sign in message
       And I should see employer hire message
       And Jack Ivl click on continue button on group selection page after hired by employer
-      And I select a plan on plan shopping page
+      Then Employee should see the list of plans
+      When Employee selects a plan on the plan shopping page
       Then I should see the coverage summary page
       When I clicks on Confirm button on the coverage summary page
       Then I should see the receipt page

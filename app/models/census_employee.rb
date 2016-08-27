@@ -35,7 +35,6 @@ class CensusEmployee < CensusMember
 
   validates_presence_of :employer_profile_id, :ssn, :dob, :hired_on, :is_business_owner
   validate :check_employment_terminated_on
-  validate :check_coverage_terminated_on # date must be within 60 days of TimeKeeper.date_of_record
   validate :active_census_employee_is_unique
   validate :allow_id_info_changes_only_in_eligible_state
   validate :check_census_dependents_relationship
@@ -357,8 +356,13 @@ class CensusEmployee < CensusMember
     active_benefit_group_assignment.present? && active_benefit_group_assignment.initialized?
   end
 
-  def has_active_health_coverage?
-    HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(active_benefit_group_assignment).present?
+  def has_active_health_coverage?(plan_year)
+    benefit_group_ids = plan_year.benefit_groups.map(&:id)
+
+    bg_assignment = active_benefit_group_assignment if benefit_group_ids.include?(active_benefit_group_assignment.try(:benefit_group_id))
+    bg_assignment = renewal_benefit_group_assignment if benefit_group_ids.include?(renewal_benefit_group_assignment.try(:benefit_group_id))
+
+    bg_assignment.present? && HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(bg_assignment).present?
   end
 
   class << self
@@ -429,6 +433,38 @@ class CensusEmployee < CensusMember
     }).any_in("benefit_group_assignments.benefit_group_id" => [bg_id])
   end
 
+  def find_or_create_benefit_group_assignment(benefit_group)
+    bg_assignments = benefit_group_assignments.where(:benefit_group_id => benefit_group.id).order_by(:'created_at'.desc)
+    valid_bg_assignment = bg_assignments.detect{|bg_assign| bg_assign.aasm_state != 'initialized'}
+    valid_bg_assignment = bg_assignments.first if valid_bg_assignment.blank?
+    if valid_bg_assignment.present?
+      valid_bg_assignment.make_active
+    else
+      add_benefit_group_assignment(benefit_group, benefit_group.plan_year.start_on)
+    end
+  end
+
+  def self.to_csv
+    attributes = %w{employee_name dob hired status renewal_benefit_package benefit_package enrollment_status termination_date}
+
+    CSV.generate(headers: true) do |csv|
+      csv << attributes
+
+      all.each do |census_employee|
+        csv << [
+          "#{census_employee.first_name} #{census_employee.middle_name} #{census_employee.last_name} ",
+          census_employee.dob,
+          census_employee.hired_on,
+          census_employee.aasm_state.try(:humanize).try(:downcase),
+          census_employee.try(:renewal_benefit_group_assignment).try(:benefit_group).try(:title),
+          census_employee.active_benefit_group_assignment.benefit_group.title,
+          "dental: #{ d = census_employee.active_benefit_group_assignment.hbx_enrollments.detect{|enrollment| enrollment.coverage_kind == 'dental'}.try(:aasm_state).try(:humanize).try(:downcase)} health: #{ census_employee.active_benefit_group_assignment.hbx_enrollments.detect{|enrollment| enrollment.coverage_kind == 'health'}.try(:aasm_state).try(:humanize).try(:downcase)}",
+          census_employee.coverage_terminated_on
+        ]
+      end
+    end
+  end
+
   private
 
   def reset_active_benefit_group_assignments(new_benefit_group)
@@ -459,13 +495,14 @@ class CensusEmployee < CensusMember
     if employment_terminated_on && employment_terminated_on <= hired_on
       errors.add(:employment_terminated_on, "can't occur before hiring date")
     end
-  end
 
-  def check_coverage_terminated_on
-    if employment_terminated_on && employment_terminated_on <= TimeKeeper.date_of_record - 60.days
-      errors.add(:base, "Employee termination must be within the past 60 days")
+    if !self.employment_terminated? && !self.rehired?
+      if employment_terminated_on && employment_terminated_on <= TimeKeeper.date_of_record - 60.days
+        errors.add(:employment_terminated_on, "Employee termination must be within the past 60 days")
+      end
     end
   end
+
 
   def no_duplicate_census_dependent_ssns
     dependents_ssn = census_dependents.map(&:ssn).select(&:present?)

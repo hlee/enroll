@@ -7,6 +7,7 @@ RSpec.describe User, :type => :model do
   let(:valid_params) do
     {
       email: "test@test.com",
+      oim_id: "testtest",
       password: gen_pass,
       password_confirmation: gen_pass,
       approved: true,
@@ -16,24 +17,40 @@ RSpec.describe User, :type => :model do
 
   describe 'user' do
 
-    context 'when email' do
-      let(:params){valid_params.deep_merge!({email: "test"})}
-      it 'is invalid' do
-        expect(User.create(**params).errors[:email].any?).to be_truthy
-        expect(User.create(**params).errors[:email]).to eq ["is invalid"]
+    context 'when oim_id' do
+      let(:params){valid_params.deep_merge!({oim_id: "user+name"})}
+      it 'contains invalid characters' do
+        expect(User.create(**params).errors[:login].any?).to be_truthy
+        expect(User.create(**params).errors[:login]).to eq ["username cannot contain special charcters ; # % = | + , \" > < \\ \/"]
       end
     end
 
-    context 'when email' do
-      let(:params){valid_params.deep_merge!({email: ""})}
+    context 'when oim_id' do
+      let(:params){valid_params.deep_merge!({oim_id: "user"})}
+      it 'is too short' do
+        expect(User.create(**params).errors[:login].any?).to be_truthy
+        expect(User.create(**params).errors[:login]).to eq ["username must be at least 8 characters"]
+      end
+    end
+
+    context 'when oim_id' do
+      let(:params){valid_params.deep_merge!({oim_id: "useruseruseruseruseruseruseruseruseruseruseruseruseruseruseruser"})}
+      it 'is too long' do
+        expect(User.create(**params).errors[:login].any?).to be_truthy
+        expect(User.create(**params).errors[:login]).to eq ["username can NOT exceed 60 characters"]
+      end
+    end
+
+    context 'when oim_id' do
+      let(:params){valid_params.deep_merge!({oim_id: ""})}
       it 'is empty' do
-        expect(User.create(**params).errors[:email].any?).to be_truthy
-        expect(User.create(**params).errors[:email]).to eq ["can't be blank"]
+        expect(User.create(**params).errors[:oim_id].any?).to be_truthy
+        expect(User.create(**params).errors[:oim_id]).to eq ["can't be blank"]
       end
     end
 
     context 'when password' do
-      let(:params){valid_params.deep_merge!({password: ""})}
+      let(:params){valid_params.deep_merge!({password: "",})}
       it 'is empty' do
         expect(User.create(**params).errors[:password].any?).to be_truthy
         expect(User.create(**params).errors[:password]).to eq ["can't be blank"]
@@ -42,7 +59,7 @@ RSpec.describe User, :type => :model do
     end
 
     context 'when password' do
-      let(:params){valid_params.deep_merge!({password: valid_params[:email] + "aA1!"})}
+      let(:params){valid_params.deep_merge!({password: valid_params[:oim_id] + "aA1!"})}
       it 'contains username' do
         expect(User.create(**params).errors[:password].any?).to be_truthy
         expect(User.create(**params).errors[:password]).to eq ["password cannot contain username"]
@@ -120,7 +137,8 @@ RSpec.describe User, :type => :model do
         employer_staff_role =FactoryGirl.create(:employer_staff_role, person: person)
         #allow(person).to receive(:employee_roles).and_return([role])
         FactoryGirl.create(:employer_staff_role, person: person)
-        expect(user.has_employee_role?).to be_truthy
+        #Deprecated. DO NOT USE.  Migrate to person.active_employee_roles.present?
+        #expect(user.has_employee_role?).to be_truthy
         expect(user.has_employer_staff_role?).to be_truthy
         expect(user.has_broker_role?).to be_truthy
         expect(user.has_hbx_staff_role?).to be_truthy
@@ -159,6 +177,109 @@ describe User do
     let(:decision_code_value) { User::INTERACTIVE_IDENTITY_VERIFICATION_SUCCESS_CODE }
     it "should be considered identity_verified" do
       expect(subject.identity_verified?).to eq true
+    end
+  end
+end
+
+describe User do
+  let(:person) { FactoryGirl.create(:person) }
+  let(:user) { FactoryGirl.create(:user, person: person) }
+  context "get_announcements_by_roles_and_portal" do
+    before :each do
+      Announcement.destroy_all
+      Announcement::AUDIENCE_KINDS.each do |kind|
+        FactoryGirl.create(:announcement, content: "msg for #{kind}", audiences: [kind])
+      end
+    end
+
+    it "when employer_staff_role" do
+      allow(user).to receive(:has_employer_staff_role?).and_return true
+      expect(user.get_announcements_by_roles_and_portal("dc.org/employers/employer_profiles")).to eq ["msg for Employer"]
+    end
+
+    it "when employee_role" do
+      allow(user).to receive(:has_employee_role?).and_return true
+      expect(user.get_announcements_by_roles_and_portal("dc.org/employee")).to eq ["msg for Employee"]
+    end
+
+    it "when has active_employee_roles, but without employee_role role" do
+      user.roles = []
+      allow(person).to receive(:has_active_employee_role?).and_return true
+      expect(user.get_announcements_by_roles_and_portal("dc.org/employee")).to eq ["msg for Employee"]
+    end
+
+    it "when visit families/home" do
+      allow(user).to receive(:has_employee_role?).and_return true
+      allow(user).to receive(:has_consumer_role?).and_return true
+      expect(user.get_announcements_by_roles_and_portal("dc.org/families/home")).to eq ["msg for Employee", "msg for IVL"]
+    end
+
+    it "when broker_role" do
+      user.roles = ['broker']
+      expect(user.get_announcements_by_roles_and_portal("dc.org/broker_agencies")).to eq ["msg for Broker"]
+    end
+
+    it "when consumer_role" do
+      allow(user).to receive(:has_consumer_role?).and_return true
+      expect(user.get_announcements_by_roles_and_portal("dc.org/consumer")).to eq ["msg for IVL"]
+    end
+
+    it "when has active_consumer_roles, but without consumer_role role" do
+      user.roles = []
+      allow(person).to receive(:consumer_role).and_return true
+      expect(user.get_announcements_by_roles_and_portal("dc.org/consumers")).to eq ["msg for IVL"]
+    end
+
+    it "when general_agency_staff" do
+      user.roles = ['general_agency_staff']
+      expect(user.get_announcements_by_roles_and_portal("dc.org/general_agencies")).to eq ["msg for GA"]
+    end
+
+    context "when broker_role and consumer_role" do
+      it "with employer portal" do
+        user.roles = ['consumer', 'broker']
+        expect(user.get_announcements_by_roles_and_portal("dc.org/employers")).to eq []
+      end
+
+      it "with consumer portal" do
+        user.roles = ['consumer', 'broker']
+        allow(person).to receive(:consumer_role).and_return true
+        expect(user.get_announcements_by_roles_and_portal("dc.org/consumer_role")).to eq ["msg for IVL"]
+      end
+
+      it "with broker agency portal" do
+        user.roles = ['consumer', 'broker']
+        expect(user.get_announcements_by_roles_and_portal("dc.org/broker_agencies")).to eq ["msg for Broker"]
+      end
+    end
+  end
+
+  describe "can_change_broker?" do
+    context "with user" do
+      it "should return true when hbx staff" do
+        user.roles = ['hbx_staff']
+        expect(user.can_change_broker?).to eq true
+      end
+
+      it "should return true when employer staff" do
+        allow(person).to receive(:has_active_employer_staff_role?).and_return true
+        expect(user.can_change_broker?).to eq true
+      end
+
+      it "should return false when broker role" do
+        user.roles = ['broker']
+        expect(user.can_change_broker?).to eq false
+      end
+
+      it "should return false when broker agency staff" do
+        user.roles = ['broker_agency_staff']
+        expect(user.can_change_broker?).to eq false
+      end
+
+      it "should return false when general agency staff" do
+        user.roles = ['general_agency_staff']
+        expect(user.can_change_broker?).to eq false
+      end
     end
   end
 end

@@ -90,9 +90,15 @@
 </div>
 
 <% if f.object.addresses[1].present? %>
-  <span class="form-action btn btn-trans">Remove Mailing Address</span>
+  <span class="form-action btn btn-default">Remove Mailing Address</span>
 <% else %>
-  <span class="form-action btn btn-trans">Add Mailing Address</span>
+  <span class="form-action btn btn-default">Add Mailing Address</span>
+<% end %>
+
+<% if show_no_dc_address %>
+<div id="mailing_address_required_msg" class='hidden'>
+  <p>We need your mailing address so that your health insurance plan can send important documents like invoices and insurance cards. If you don’t check this address regularly, be sure to indicate that you want electronic notices below. You may also want to call your health insurance company to request electronic notifications from them.</p>
+</div>
 <% end %>
 
 <% if show_no_dc_address %>

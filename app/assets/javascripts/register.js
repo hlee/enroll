@@ -21,9 +21,8 @@ var REGISTER = ( function( window, undefined ) {
 
   function initialize() {
     outputResult();
-    $('#user_email').keyup(function() {
+    $('#signup #user_email').keyup(function() {
     }).focus(function() {
-      console.log("username");
       $('.username_tooltip').show();
       if($(window).width() <= 480) {
         $('.tooltip_box.username_tooltip').css('top','0px');
@@ -37,7 +36,7 @@ var REGISTER = ( function( window, undefined ) {
     });
 
     /* check password validation */
-    $('#user_password').keyup(function() {
+    $('#signup #user_password').keyup(function() {
       onkeycheckForm();
       checkVal();
     }).focus(function() {
@@ -51,7 +50,7 @@ var REGISTER = ( function( window, undefined ) {
     });
 
     /* check confirm password validation */
-    $('#user_password_confirmation').keyup(function() {
+    $('#signup #user_password_confirmation').keyup(function() {
       var pas = $("#user_password");
       var con_pas = $('#user_password_confirmation');
       var pass1 = pas.val();
@@ -72,7 +71,7 @@ var REGISTER = ( function( window, undefined ) {
       }
     });
 
-    $('form#new_user').submit(function(e){
+    $('#signup form#new_user').submit(function(e){
       if (checkForm()){
         return true;
       } else {
@@ -149,7 +148,7 @@ var REGISTER = ( function( window, undefined ) {
         $('#wh_space').removeClass('valid').addClass('invalid');
       }
       //validate not match user id
-      if (user_val.length > 0 && pass1.toLowerCase().indexOf(user_val.toLowerCase()) >= 0) {
+      if (user_val.length > 0 && pass1.indexOf(user_val) >= 0) {
         $('#nm_uid').removeClass('valid').addClass('invalid');
       } else {
         $('#nm_uid').removeClass('invalid').addClass('valid');
@@ -157,7 +156,7 @@ var REGISTER = ( function( window, undefined ) {
 
       //validate repeated no more than 4
       var max_repeats = 4;
-      pass_str = pass1.toLowerCase();
+      pass_str = pass1;
       var chars = pass_str.split('');
       var cmap = {};
       for (var i = 0; i < chars.length; i++) {
@@ -343,7 +342,7 @@ var REGISTER = ( function( window, undefined ) {
           pass1_status = false;
         }
         //validate not match username 
-        if (user_val.length > 0 && pass1.toLowerCase().indexOf(user_val.toLowerCase()) >= 0) {
+        if (user_val.length > 0 && pass1.indexOf(user_val) >= 0) {
           $('#nm_uid').removeClass('valid').addClass('invalid');
           pass1_status = false;
         } else {
@@ -351,7 +350,7 @@ var REGISTER = ( function( window, undefined ) {
         }
         //validate repeated no more than twice
         var max_repeats = 4;
-        pass_str = pass1.toLowerCase();
+        pass_str = pass1;
         var chars = pass_str.split('');
         var cmap = {};
         for (var i = 0; i < chars.length; i++) {

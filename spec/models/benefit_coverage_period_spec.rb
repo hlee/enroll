@@ -227,12 +227,17 @@ RSpec.describe BenefitCoveragePeriod, type: :model, dbclean: :after_each do
     let(:benefit_package2) {double(benefit_ids: [plan3.id, plan4.id])}
     let(:benefit_packages)  { [benefit_package1, benefit_package2] }
     let(:rule) {double}
+    let(:rule2) {double}
 
     before :each do
       TimeKeeper.set_date_of_record_unprotected!(Date.new(2015,10,20))
       Plan.delete_all
       allow(benefit_coverage_period).to receive(:benefit_packages).and_return [benefit_package1, benefit_package2]
-      allow(InsuredEligibleForBenefitRule).to receive(:new).and_return rule
+      benefit_packages.each do |bg|
+        [member1, member2].each do |member|
+          allow(InsuredEligibleForBenefitRule).to receive(:new).with(member.person.consumer_role, bg, 'health').and_return rule
+        end
+      end
     end
 
     after do
@@ -252,6 +257,16 @@ RSpec.describe BenefitCoveragePeriod, type: :model, dbclean: :after_each do
       allow(rule).to receive(:satisfied?).and_return [false, 'ok']
       plans = []
       expect(benefit_coverage_period.elected_plans_by_enrollment_members([member1, member2], 'health')).to eq plans
+    end
+
+    it "when any member satisfied" do
+      allow(rule).to receive(:satisfied?).and_return [false, 'ok']
+      allow(rule2).to receive(:satisfied?).and_return [true, 'ok']
+      allow(InsuredEligibleForBenefitRule).to receive(:new).with(c1, benefit_package1, 'health').and_return rule2
+      elected_plans_by_enrollment_members = benefit_coverage_period.elected_plans_by_enrollment_members([member1, member2], 'health')
+      expect(elected_plans_by_enrollment_members).to include(plan1)
+      expect(elected_plans_by_enrollment_members).not_to include(plan3)
+      expect(elected_plans_by_enrollment_members).not_to include(plan2)
     end
   end
 end

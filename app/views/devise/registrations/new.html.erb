@@ -13,10 +13,7 @@
 
 	        <div class="form-group">
             <%= f.label :email_or_username %>
-            <%= f.text_field :oim_id, class: "form-control", required: true , onblur: "Registration.toggleEmail(this)",
-            :data => { :toggle=>"popover" ,:content=>"You can create a username or use your email address as your login. Using your email address will make it easier to recover your password if you ever forget it.",
-              :placement => 'right', :trigger => 'focus' }
-            %>
+            <%= f.text_field :oim_id, class: "form-control", required: true , onblur: "Register.toggleEmail(this)" %>
 	        </div>
           <div class="tooltip_box username_tooltip" style="display: none;">
             <p style="margin-bottom:0;">You can use your email address as your login. Using your email address will make it easier to recover your password if you ever forget it.</p>
@@ -58,10 +55,10 @@
             <%= f.label :email %>
             <em> (Optional)</em>
             <br/>
-            <%= f.text_field :email, class: "form-control" ,:oninput => "Registration.trimEmail(this);" %>
+            <%= f.text_field :email, class: "form-control" ,:oninput => "Register.trimEmail(this);" %>
           </div>
 
-      		<%= f.hidden_field :invitation_id %>
+          <%= f.hidden_field :invitation_id %>
           <br/>
 	        <div class="actions text-center">
   	          <%= f.submit "Create account", class: "btn btn-primary btn-lg " %>
@@ -77,6 +74,6 @@
 
 <script type="text/javascript">
   $(document).on('ready page:load', function () {
-    REGISTER.initialize();
+    Register.initialize();
   });
 </script>

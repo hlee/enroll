@@ -1,4 +1,4 @@
-var REGISTER = ( function( window, undefined ) {
+var Register = ( function( window, undefined ) {
   var strPassword;
   var charPassword;
   var minPasswordLength = 8;
@@ -21,7 +21,7 @@ var REGISTER = ( function( window, undefined ) {
 
   function initialize() {
     outputResult();
-    $('#signup #user_email').keyup(function() {
+    $('#signup #user_oim_id').keyup(function() {
     }).focus(function() {
       $('.username_tooltip').show();
       if($(window).width() <= 480) {
@@ -82,13 +82,13 @@ var REGISTER = ( function( window, undefined ) {
   }
 
   function onkeycheckForm(form) {
-    var user_email = $('#user_email');
+    var oim_id = $('#user_oim_id');
     var pas = $("#user_password");
     var con_pas = $('#user_password_confirmation');
-    var user_val = user_email.val();
+    var user_val = oim_id.val();
     var pass1 = pas.val();
     var pass2 = con_pas.val();
-    var status;
+    var status = true;
 
     $('#length').removeClass('valid').addClass('invalid');
     $('#longer').removeClass('valid').addClass('invalid');
@@ -107,12 +107,14 @@ var REGISTER = ( function( window, undefined ) {
       //validate the length
       if(pass1.length < 8) {
         $('#length').removeClass('valid').addClass('invalid');
+        status = false;
       } else {
         $('#length').removeClass('invalid').addClass('valid');
       }
       //validate the longer length
       if(pass1.length > 20) {
         $('#longer').removeClass('valid').addClass('invalid');
+        status = false;
       } else {
         $('#longer').removeClass('invalid').addClass('valid');
       }
@@ -121,6 +123,7 @@ var REGISTER = ( function( window, undefined ) {
         $('#lower').removeClass('invalid').addClass('valid');
       } else {
         $('#lower').removeClass('valid').addClass('invalid');
+        status = false;
       }
       //validate uppercase letter
       if(!pass1.match(/[A-Z]/)) {
@@ -132,12 +135,14 @@ var REGISTER = ( function( window, undefined ) {
       //validate the number
       if(!(pass1.match(/[0-9]/))){
         $('#number').removeClass('valid').addClass('invalid');
+        status = false;
       } else {
         $('#number').removeClass('invalid').addClass('valid');
       }
       //validate special character
       if(!(pass1.match(/.[!,@,#,$,%,^,&,*,?,_,~,-,(,)]/))) {
         $('#spec_char').removeClass('valid').addClass('invalid');
+        status = false;
       } else {
         $('#spec_char').removeClass('invalid').addClass('valid');
       }
@@ -146,10 +151,12 @@ var REGISTER = ( function( window, undefined ) {
         $('#wh_space').removeClass('invalid').addClass('valid');
       } else {
         $('#wh_space').removeClass('valid').addClass('invalid');
+        status = false;
       }
       //validate not match user id
       if (user_val.length > 0 && pass1.indexOf(user_val) >= 0) {
         $('#nm_uid').removeClass('valid').addClass('invalid');
+        status = false;
       } else {
         $('#nm_uid').removeClass('invalid').addClass('valid');
       }
@@ -172,6 +179,7 @@ var REGISTER = ( function( window, undefined ) {
         }
       }
     }
+    return status;
   }
 
   function checkVal(){
@@ -242,10 +250,10 @@ var REGISTER = ( function( window, undefined ) {
       complexity.html("").removeClass("strong stronger strongest").addClass("weak");
       pass_strength.html("Weak");
     } else if (score>=50 && score<75) {
-      complexity.html("").removeClass("stronger strongest").addClass("strong");
+      complexity.html("").removeClass("weak stronger strongest").addClass("strong");
       pass_strength.html("Average");
     } else if (score>=75 && score<100) {
-      complexity.html("").removeClass("strongest").addClass("stronger");
+      complexity.html("").removeClass("weak strong strongest").addClass("stronger");
       pass_strength.html("Strong");
     } else if (score>=100) {
       complexity.html("").addClass("strongest");
@@ -254,10 +262,10 @@ var REGISTER = ( function( window, undefined ) {
   }
 
   function checkForm(form) {
-    var user_email = $('#user_email');
+    var oim_id = $('#user_oim_id');
     var pas = $("#user_password");
     var con_pas = $('#user_password_confirmation');
-    var user_val = user_email.val();
+    var user_val = oim_id.val();
     var pass1 = pas.val();
     var pass2 = con_pas.val();
     var status = true;
@@ -270,110 +278,19 @@ var REGISTER = ( function( window, undefined ) {
     $('#user_password_confirmation').parent('.form-group').removeClass('has-error');
 
     if(user_val == '') {
-      user_email.parent('.form-group').addClass('has-error');
+      oim_id.parent('.form-group').addClass('has-error');
       $('.error-block').show();
       $('.alert').removeClass('alert-success').addClass('alert-danger').text('You must complete the highlighted field(s).');
       status = false;
     }
 
-    if(pass1 == ""){
-      $('#user_password').parent('.form-group').addClass('has-error');
+    pass1_status = onkeycheckForm(form);
+    if (pass1_status == false) {
       $('.error-block').show();
-      $('.alert').removeClass('alert-success').addClass('alert-danger').text("You must complete the highlighted field(s).");
-      status = false;
-    } else {
-      $('#longer').removeClass('valid').addClass('invalid');
-      $('#length').removeClass('valid').addClass('invalid');
-      $('#number').removeClass('valid').addClass('invalid');
-      $('#lower').removeClass('valid').addClass('invalid');
-      $('#upper').removeClass('valid').addClass('invalid');
-      $('#spec_char').removeClass('valid').addClass('invalid');
-      $('#wh_space').removeClass('valid').addClass('invalid');
-      $('#mtt').removeClass('valid').addClass('invalid');
-      $('#nm_uid').removeClass('valid').addClass('invalid');
-
-      if(pass1.length > 0) {
-        //validate the longer length
-        if(pass1.length > 20) {
-          $('#longer').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        } else {
-          $('#longer').removeClass('invalid').addClass('valid');
-        }
-        //validate the length
-        if(pass1.length < 8) {
-          $('#length').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        } else {
-          $('#length').removeClass('invalid').addClass('valid');
-        }
-        if(!(pass1.match(/[0-9]/))){
-          $('#number').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        } else {
-          $('#number').removeClass('invalid').addClass('valid');
-        }
-        //validate lowercase letter
-        if ( pass1.match(/[a-z]/) ) {
-          $('#lower').removeClass('invalid').addClass('valid');
-        } else {
-          $('#lower').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        }
-        //validate uppercase letter
-        if(!pass1.match(/[A-Z]/)) {
-          $('#upper').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        } else {
-          $('#upper').removeClass('invalid').addClass('valid');
-        }
-        //validate special character
-        if(!(pass1.match(/.[!,@,#,$,%,^,&,*,?,_,~,-,(,)]/))) {
-          $('#spec_char').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        } else {
-          $('#spec_char').removeClass('invalid').addClass('valid');
-        }
-        //validate white space
-        if ( !(pass1.match(/\s/)) ) {
-          $('#wh_space').removeClass('invalid').addClass('valid');
-        } else {
-          $('#wh_space').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        }
-        //validate not match username 
-        if (user_val.length > 0 && pass1.indexOf(user_val) >= 0) {
-          $('#nm_uid').removeClass('valid').addClass('invalid');
-          pass1_status = false;
-        } else {
-          $('#nm_uid').removeClass('invalid').addClass('valid');
-        }
-        //validate repeated no more than twice
-        var max_repeats = 4;
-        pass_str = pass1;
-        var chars = pass_str.split('');
-        var cmap = {};
-        for (var i = 0; i < chars.length; i++) {
-          if (! cmap.hasOwnProperty(chars[i])) cmap[chars[i]] = 0;
-          cmap[chars[i]]++;
-        }
-        for (var p in cmap) {
-          if (cmap[p] > max_repeats){
-            $('#mtt').removeClass('valid').addClass('invalid');
-            pass1_status = false;
-          } else {
-            $('#mtt').removeClass('invalid').addClass('valid');
-          }
-        }
-
-        if (pass1_status == false) {
-          $('.error-block').show();
-          $('.alert').removeClass('alert-success').addClass('alert-danger').text("Password didn't match with requirements.");
-          pas.focus();
-          $('#inputPassword').parent('.form-group').addClass('has-error');
-          return false;
-        }
-      }
+      $('.alert').removeClass('alert-success').addClass('alert-danger').text("Password didn't match with requirements.");
+      pas.focus();
+      $('#inputPassword').parent('.form-group').addClass('has-error');
+      return false;
     }
 
     if(pass2 == ""){
@@ -400,7 +317,29 @@ var REGISTER = ( function( window, undefined ) {
     }
   }
 
+  function toggleEmail(element){
+    $(element).val($.trim($(element).val()));
+    var username= $(element).val();
+    var email_regexp = /^[\w\-\.\+]+\@[a-zA-Z0-9\.\-]+\.[a-zA-z0-9]{2,4}$/;
+    
+    if(email_regexp.test(username)) {
+      $('.email_field').addClass("hidden_field"); 
+      $('.email_field input').val(""); 
+    }else if(username.length == 0 ){
+      $('.email_field').addClass("hidden_field"); 
+      $('.email_field input').val("");
+    }else{
+      $('.email_field').removeClass("hidden_field");  
+    }  
+  }
+
+  function trimEmail(element){
+    $(element).val($.trim($(element).val()));
+  }
+
   return {
     initialize : initialize,
+    toggleEmail : toggleEmail,
+    trimEmail: trimEmail
   };
 } )( window );

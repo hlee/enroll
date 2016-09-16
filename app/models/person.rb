@@ -9,7 +9,7 @@ class Person
   include FullStrippedNames
 
   extend Mongorder
-  validates_with Validations::DateRangeValidator
+#  validates_with Validations::DateRangeValidator
 
 
   GENDER_KINDS = %W(male female)
@@ -87,6 +87,7 @@ class Person
   embeds_many :addresses, cascade_callbacks: true, validate: true
   embeds_many :phones, cascade_callbacks: true, validate: true
   embeds_many :emails, cascade_callbacks: true, validate: true
+  embeds_many :documents, as: :documentable
 
   accepts_nested_attributes_for :consumer_role, :responsible_party, :broker_role, :hbx_staff_role,
     :person_relationships, :employee_roles, :phones, :employer_staff_roles
@@ -186,7 +187,7 @@ class Person
   scope :broker_role_decertified,   -> { where("broker_role.aasm_state" => { "$eq" => :decertified })}
   scope :broker_role_denied,        -> { where("broker_role.aasm_state" => { "$eq" => :denied })}
   scope :by_ssn,                    ->(ssn) { where(encrypted_ssn: Person.encrypt_ssn(ssn)) }
-  scope :unverified_persons,        -> {Person.in(:'consumer_role.aasm_state'=>['verifications_outstanding', 'verifications_pending'])}
+  scope :unverified_persons,        -> { where(:'consumer_role.aasm_state' => { "$ne" => "fully_verified" })}
   scope :matchable,                 ->(ssn, dob, last_name) { where(encrypted_ssn: Person.encrypt_ssn(ssn), dob: dob, last_name: last_name) }
 
   scope :general_agency_staff_applicant,     -> { where("general_agency_staff_roles.aasm_state" => { "$eq" => :applicant })}
@@ -255,6 +256,8 @@ class Person
   end
 
   delegate :citizen_status, :citizen_status=, :to => :consumer_role, :allow_nil => true
+
+  delegate :ivl_coverage_selected, :to => :consumer_role, :allow_nil => true
 
   # before_save :notify_change
   # def notify_change
@@ -459,12 +462,25 @@ class Person
     phones.detect { |phone| phone.kind == "mobile" }
   end
 
+  def work_phone_or_best
+    best_phone  = work_phone || mobile_phone || home_phone
+    best_phone ? best_phone.full_phone_number : nil
+  end
+
   def has_active_consumer_role?
     consumer_role.present? and consumer_role.is_active?
   end
 
+  def can_report_shop_qle?
+    employee_roles.first.census_employee.qle_30_day_eligible?
+  end
+
   def has_active_employee_role?
     active_employee_roles.any?
+  end
+
+  def has_employer_benefits?
+    active_employee_roles.present? && active_employee_roles.first.benefit_group.present?
   end
 
   def active_employee_roles
@@ -644,8 +660,8 @@ class Person
       rescue
         return false, 'Person not found'
       end
-      if role = person.employer_staff_roles.detect{|role| role.employer_profile_id.to_s == employer_profile_id.to_s}
-        role.update_attributes!(:aasm_state => :is_closed)
+      if (roles = person.employer_staff_roles.select{ |role| role.employer_profile_id.to_s == employer_profile_id.to_s }).present?
+        roles.each { |role| role.update_attributes!(:aasm_state => :is_closed) }
         return true, 'Employee Staff Role is inactive'
       else
         return false, 'No matching employer staff role'

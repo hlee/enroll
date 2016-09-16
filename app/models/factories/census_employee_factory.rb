@@ -2,7 +2,6 @@ module Factories
   class CensusEmployeeFactory
 
     attr_accessor :census_employee, :plan_year
-
     def begin_coverage
 
       if selected_enrollments.size > 1
@@ -15,6 +14,18 @@ module Factories
 
       if selected_enrollments.none? && renewal_enrollments.none?
         # TODO: update benefit group assignment to correct state from coverage_renewing
+        
+        bg_ids = @plan_year.benefit_groups.map(&:id)
+        assignment = @census_employee.benefit_group_assignments.detect{ |assignment| bg_ids.include?(assignment.benefit_group_id) }
+
+        if assignment.present?
+          assignment.make_active
+        else
+          benefit_group = @plan_year.default_benefit_group || @plan_year.benefit_groups.first
+          census_employee.add_benefit_group_assignment(benefit_group, benefit_group.start_on)
+          census_employee.save!
+        end
+
         return
       end
 
@@ -47,8 +58,8 @@ module Factories
     end
 
     def end_coverage
-      prev_year_enrollments = family_record.active_household.hbx_enrollments.where(:"effective_on".lt => @plan_year.start_on).shop_market
-      prev_year_enrollments.enrolled.each do |hbx_enrollment|
+      prev_year_enrollments = employee_enrollments.select{|enrollment| enrollment.benefit_group == @plan_year.benefit_groups.first}.select{|e| HbxEnrollment::ENROLLED_STATUSES.include?(e.aasm_state)}
+      prev_year_enrollments.each do |hbx_enrollment|
         hbx_enrollment.expire_coverage! if hbx_enrollment.may_expire_coverage?
         benefit_group_assignment = hbx_enrollment.benefit_group_assignment
         benefit_group_assignment.expire_coverage! if benefit_group_assignment.may_expire_coverage?
@@ -58,8 +69,12 @@ module Factories
 
     private
 
+    def employee_enrollments
+      family_record.active_household.hbx_enrollments
+    end
+
     def enrollments
-      family_record.active_household.hbx_enrollments.where(effective_on: (@plan_year.start_on..@plan_year.end_on)).shop_market
+      employee_enrollments.where(effective_on: (@plan_year.start_on..@plan_year.end_on)).shop_market
     end
 
     def selected_enrollments

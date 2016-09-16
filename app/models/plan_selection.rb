@@ -16,7 +16,7 @@ class PlanSelection
 
   def can_apply_aptc?(shopping_tax_household, elected_aptc)
     return false if hbx_enrollment.is_shop?
-    shopping_tax_household.present? and elected_aptc > 0 and plan.can_use_aptc?
+    shopping_tax_household.present? && elected_aptc > 0 && plan.can_use_aptc?
   end
 
   def apply_aptc_if_needed(shopping_tax_household, elected_aptc, max_aptc)
@@ -36,7 +36,6 @@ class PlanSelection
       hbx_enrollment.special_enrollment_period_id = sep_id
     end
     hbx_enrollment.select_coverage!
-    hbx_enrollment.propogate_selection
   end
 
   def self.for_enrollment_id_and_plan_id(enrollment_id, plan_id)

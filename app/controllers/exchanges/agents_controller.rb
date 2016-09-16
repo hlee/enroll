@@ -55,14 +55,14 @@ class Exchanges::AgentsController < ApplicationController
     @inbox_provider = current_user.person
     @profile=@inbox_provider
     @folder = params[:folder] || 'inbox'
-    @sent_box = false  
+    @sent_box = false
   end
 
   def show
   end
 
   def check_agent_role
-    unless current_user.has_agent_role? || current_user.has_hbx_staff_role? || current_user.has_broker_role?
+    unless current_user.has_agent_role? || current_user.has_hbx_staff_role? || current_user.has_broker_role? || current_user.has_general_agency_staff_role?
       redirect_to root_path, :flash => { :error => "You must be an Agent:  CSR, CAC, IPA or a Broker" }
     end
     current_user.last_portal_visited = home_exchanges_agents_path

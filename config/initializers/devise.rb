@@ -1,6 +1,14 @@
 # Use this hook to configure devise mailer, warden hooks and so forth.
 # Many of these configuration options can be set straight in your model.
 Devise.setup do |config|
+
+  # custom path for expired warden sessions
+  require "custom_failure_app"
+
+  config.warden do |manager|
+    manager.failure_app = CustomFailureApp
+  end
+
   # The secret key used by Devise. Devise uses this key to generate
   # random tokens. Changing this key will render invalid all existing
   # confirmation, reset password and unlock tokens in the database.
@@ -150,7 +158,9 @@ Devise.setup do |config|
   # ==> Configuration for :timeoutable
   # The time you want to timeout the user session without activity. After this
   # time the user will be asked for credentials again. Default is 30 minutes.
+
   config.timeout_in = 15.minutes
+  config.timeout_in = 6000.minutes if Rails.env.development? && (ENV['timeout'] != 'true')
 
   # If true, expires auth token on session timeout.
   # config.expire_auth_token_on_timeout = false

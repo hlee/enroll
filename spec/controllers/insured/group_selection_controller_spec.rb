@@ -10,7 +10,9 @@ RSpec.describe Insured::GroupSelectionController, :type => :controller do
   let(:family) {Family.new}
   let(:hbx_enrollment) {HbxEnrollment.create}
   let(:hbx_enrollments) {double(:enrolled => [hbx_enrollment])}
-  let(:benefit_package) { FactoryGirl.create(:benefit_package,
+  let(:hbx_profile) {FactoryGirl.create(:hbx_profile)}
+  let(:benefit_package) { FactoryGirl.build(:benefit_package,
+      benefit_coverage_period: hbx_profile.benefit_sponsorship.benefit_coverage_periods.first,
       title: "individual_health_benefits_2015",
       elected_premium_credit_strategy: "unassisted",
       benefit_eligibility_element_group: BenefitEligibilityElementGroup.new(
@@ -24,8 +26,6 @@ RSpec.describe Insured::GroupSelectionController, :type => :controller do
         residency_status:     ["state_resident"],
         ethnicity:            ["any"]
     ))}
-    let(:hbx_profile) {double} 
-    let(:benefit_sponsorship) { double }
     let(:bcp) { double }
 
   before do
@@ -35,9 +35,6 @@ RSpec.describe Insured::GroupSelectionController, :type => :controller do
     allow(person).to receive(:consumer_role).and_return(nil)
     allow(person).to receive(:consumer_role?).and_return(false)
     allow(user).to receive(:last_portal_visited).and_return('/')
-    allow(HbxProfile).to receive(:current_hbx).and_return hbx_profile
-    allow(hbx_profile).to receive(:benefit_sponsorship).and_return benefit_sponsorship
-    allow(benefit_sponsorship).to receive(:current_benefit_period).and_return(bcp)
   end
 
   context "GET new" do
@@ -75,6 +72,51 @@ RSpec.describe Insured::GroupSelectionController, :type => :controller do
       sign_in user
       get :new, person_id: person.id, employee_role_id: employee_role.id
       expect(assigns(:person)).to eq person
+    end
+
+    it "should get hbx_enrollment when has active hbx_enrollments and in qle flow" do
+      allow(household).to receive(:hbx_enrollments).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:shop_market).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:enrolled_and_renewing).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:effective_desc).and_return([hbx_enrollment])
+      allow(hbx_enrollment).to receive(:may_terminate_coverage?).and_return true
+      allow(hbx_enrollment).to receive(:can_complete_shopping?).and_return true
+
+      sign_in user
+      get :new, person_id: person.id, employee_role_id: employee_role.id, change_plan: 'change_by_qle', market_kind: 'shop'
+      expect(assigns(:hbx_enrollment)).to eq hbx_enrollment
+    end
+
+    it "should get hbx_enrollment when has enrolled hbx_enrollments and in shop qle flow but user has both employee_role and consumer_role" do
+      allow(household).to receive(:hbx_enrollments).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:shop_market).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:enrolled_and_renewing).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:effective_desc).and_return([hbx_enrollment])
+      allow(hbx_enrollment).to receive(:may_terminate_coverage?).and_return true
+      allow(hbx_enrollment).to receive(:can_complete_shopping?).and_return true
+
+      sign_in user
+      get :new, person_id: person.id, employee_role_id: employee_role.id, change_plan: 'change_by_qle', market_kind: 'shop', consumer_role_id: consumer_role.id
+      expect(assigns(:hbx_enrollment)).to eq hbx_enrollment
+    end
+
+    it "should not get hbx_enrollment when has active hbx_enrollments and not in qle flow" do
+      sign_in user
+      get :new, person_id: person.id, employee_role_id: employee_role.id
+      expect(assigns(:hbx_enrollment)).not_to eq hbx_enrollment
+    end
+
+    it "should disable individual market kind if selected market kind is shop in dual role SEP" do
+      allow(household).to receive(:hbx_enrollments).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:shop_market).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:enrolled_and_renewing).and_return(hbx_enrollments)
+      allow(hbx_enrollments).to receive(:effective_desc).and_return([hbx_enrollment])
+      allow(hbx_enrollment).to receive(:may_terminate_coverage?).and_return true
+      allow(hbx_enrollment).to receive(:can_complete_shopping?).and_return true
+
+      sign_in user
+      get :new, person_id: person.id, employee_role_id: employee_role.id, change_plan: 'change_by_qle', market_kind: 'shop', consumer_role_id: consumer_role.id
+      expect(assigns(:disable_market_kind)).to eq "individual"
     end
 
     context "individual" do
@@ -133,10 +175,11 @@ RSpec.describe Insured::GroupSelectionController, :type => :controller do
     end
 
     it "should redirect to family home if termination is possible" do
-      allow(hbx_enrollment).to receive(:may_terminate_coverage?).and_return(true)
-      allow(hbx_enrollment).to receive(:terminate_benefit)
-      expect(hbx_enrollment).to receive(:propogate_terminate).with(Date.today)
+      allow(hbx_enrollment).to receive(:may_schedule_coverage_termination?).and_return(true)
+      expect(hbx_enrollment).to receive(:schedule_coverage_termination!).with(Date.today)
+      expect(hbx_enrollment.termination_submitted_on).to eq nil
       post :terminate, term_date: Date.today, hbx_enrollment_id: hbx_enrollment.id
+      expect(hbx_enrollment.termination_submitted_on).to eq TimeKeeper.datetime_of_record
       expect(response).to redirect_to(family_account_path)
     end
 
@@ -183,14 +226,29 @@ RSpec.describe Insured::GroupSelectionController, :type => :controller do
       expect(response).to redirect_to(insured_plan_shopping_path(id: hbx_enrollment.id, change_plan: 'change', coverage_kind: 'health', market_kind: 'shop', enrollment_kind: ''))
     end
 
-    it "when keep_existing_plan" do
-      user = FactoryGirl.create(:user, id: 97, person: FactoryGirl.create(:person))
-      sign_in user
-      allow(hbx_enrollment).to receive(:save).and_return(true)
-      allow(hbx_enrollment).to receive(:plan=).and_return(true)
-      post :create, person_id: person.id, employee_role_id: employee_role.id, family_member_ids: family_member_ids, commit: 'Keep existing plan', change_plan: 'change'
-      expect(response).to have_http_status(:redirect)
-      expect(response).to redirect_to(purchase_insured_families_path(change_plan:'change', coverage_kind: 'health', market_kind:'shop'))
+    context "when keep_existing_plan" do
+      let(:old_hbx) { HbxEnrollment.new }
+      let(:special_enrollment) { FactoryGirl.build(:special_enrollment_period) }
+      before :each do
+        user = FactoryGirl.create(:user, person: FactoryGirl.create(:person))
+        sign_in user
+        allow(hbx_enrollment).to receive(:save).and_return(true)
+        allow(hbx_enrollment).to receive(:plan=).and_return(true)
+        allow(HbxEnrollment).to receive(:find).and_return old_hbx
+        allow(old_hbx).to receive(:is_shop?).and_return true
+        allow(old_hbx).to receive(:family).and_return family
+        allow(family).to receive(:earliest_effective_shop_sep).and_return special_enrollment
+        post :create, person_id: person.id, employee_role_id: employee_role.id, family_member_ids: family_member_ids, commit: 'Keep existing plan', change_plan: 'change', hbx_enrollment_id: old_hbx.id
+      end
+
+      it "should redirect" do
+        expect(response).to have_http_status(:redirect)
+        expect(response).not_to redirect_to(purchase_insured_families_path(change_plan:'change', coverage_kind: 'health', market_kind:'shop', hbx_enrollment_id: old_hbx.id))
+      end
+
+      it "should get special_enrollment_period_id" do
+        expect(hbx_enrollment.special_enrollment_period_id).to eq special_enrollment.id
+      end
     end
 
     it "should render group selection page if not valid" do

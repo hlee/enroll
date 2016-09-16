@@ -1,3 +1,5 @@
+require 'csv'
+
 namespace :update_shop do
   desc "Renewing employer benefit period"
   task :plan_year_renewal => :environment do 
@@ -82,7 +84,7 @@ namespace :update_shop do
     #   # "United States Senate" => "536002558",
     # }
 
-    effective_date = Date.new(2015,3,1)
+    effective_date = Date.new(2015,6,1)
     organizations = Organization.all_employers_by_plan_year_start_on(effective_date)
 
     employers = organizations.map(&:employer_profile).inject({}) do |employers, profile|
@@ -91,10 +93,12 @@ namespace :update_shop do
     end
 
 
-    employer_feins = []
-    CSV.foreach("#{Rails.root.to_s}/Mar2016PassiveRenewals-GlueEnrollCountSame.csv") do |row|
-       employer_feins << row[0]
-    end
+    # employer_feins = []
+    # CSV.foreach("#{Rails.root.to_s}/Mar2016PassiveRenewals-GlueEnrollCountSame.csv") do |row|
+    #    employer_feins << row[0]
+    # end
+
+    failed = []
     
     employer_changed_count = 0
     employers.each do |name, fein|
@@ -105,24 +109,26 @@ namespace :update_shop do
           next
         end
 
-        next unless employer_feins.include?(employer.fein)
+        # next unless employer_feins.include?(employer.fein)
 
         changed_count = 0
         family_missing = 0
 
         default_benefit_group = employer.default_benefit_group
+        next if employer.active_plan_year.blank?
+
         renewing_group = employer.renewing_plan_year.benefit_groups.first
 
         if default_benefit_group.blank? && employer.plan_years.published.any?
           default_benefit_group = employer.plan_years.published.first.benefit_groups.first
         end
 
-        employer.census_employees.exists("benefit_group_assignments" => false).each do |ce|
+        employer.census_employees.non_terminated.exists("benefit_group_assignments" => false).each do |ce|
           ce.add_benefit_group_assignment(default_benefit_group, default_benefit_group.start_on)
           ce.add_renew_benefit_group_assignment(renewing_group)
           ce.save!
         end
-
+        
         employer.census_employees.non_terminated.each do |ce|
           puts "  renewing: #{ce.full_name}"
           begin
@@ -147,6 +153,7 @@ namespace :update_shop do
               factory = Factories::FamilyEnrollmentRenewalFactory.new
               factory.family = family
               factory.census_employee = ce
+              factory.renewing_plan_year = employer.plan_years.renewing.first
               factory.employer = employer
               if factory.renew
                 changed_count += 1
@@ -158,6 +165,7 @@ namespace :update_shop do
             end
           rescue Exception => e
             puts "Renewal failed for #{ce.full_name} due to #{e.to_s}"
+            failed << ce.full_name
           end
         end
 
@@ -190,6 +198,9 @@ namespace :update_shop do
 
       puts "Processed #{employer.census_employees.non_terminated.count} census employees, renewed #{changed_count} families, missing #{family_missing} families"
     end
+
+    puts "--------total failures.....#{failed.size}"
+    puts failed.inspect
 
     puts "Processed #{employers.count} employers, renewed #{employer_changed_count} employers"
   end

@@ -30,6 +30,9 @@ class SpecialEnrollmentPeriod
   # Date Enrollment Period ends
   field :end_on, type: Date
 
+  # QLE Answer to specific question
+  field :qle_answer, type: String
+
   validates_presence_of :start_on, :end_on, :message => "is invalid"
   validates_presence_of :qualifying_life_event_kind_id, :qle_on, :effective_on_kind, :submitted_at
   validate :end_date_follows_start_date
@@ -139,11 +142,21 @@ private
       when "fixed_first_of_next_month"
         fixed_first_of_next_month_effective_date
     end
+    validate_and_set_effective_on if is_shop?
+  end
+
+  def validate_and_set_effective_on
+    person = self.family.primary_applicant.person if self.family
+    employee_role = person.active_employee_roles.first if person.present?
+    employer_profile = employee_role.employer_profile if employee_role.present?
+    if employee_role && employer_profile.plan_years.published_plan_years_by_date(effective_on).blank? && employer_profile.show_plan_year.present?
+      plan_year_start_on = employer_profile.show_plan_year.start_on
+      self.effective_on = plan_year_start_on if effective_on < plan_year_start_on
+    end
   end
 
   def first_of_month_effective_date
-# binding.pry
-    if @reference_date.day <= Settings.aca.individual_market.monthly_enrollment_due_on
+    if @reference_date.day <= Setting.individual_market_monthly_enrollment_due_on
     # if submitted_at.day <= Settings.aca.individual_market.monthly_enrollment_due_on
       @earliest_effective_date.end_of_month + 1.day
     else
@@ -158,7 +171,7 @@ private
       calculate_effective_on_for_moved_qle
     else
       is_shop? ? first_of_next_month_effective_date_for_shop : first_of_next_month_effective_date_for_individual
-    end    
+    end
   end
 
   def first_of_next_month_effective_date_for_individual

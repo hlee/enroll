@@ -49,6 +49,7 @@ RSpec.describe Employers::EmployerProfilesController do
       allow(user).to receive(:has_hbx_staff_role?).and_return(false)
       allow(user).to receive(:has_employer_staff_role?).and_return(false)
       allow(user).to receive(:person).and_return(person)
+      allow(person).to receive(:has_active_employer_staff_role?).and_return(false)
       sign_in(user)
       get :new
       expect(response).to have_http_status(:success)
@@ -63,6 +64,8 @@ RSpec.describe Employers::EmployerProfilesController do
       allow(user).to receive(:has_hbx_staff_role?).and_return(false)
       allow(user).to receive(:has_employer_staff_role?).and_return(true)
       allow(user).to receive(:person).and_return(person)
+      allow(person).to receive(:has_active_employer_staff_role?).and_return(true)
+      allow(person).to receive(:active_employer_staff_roles).and_return([double("employer_staff_role", employer_profile_id: 77)])
       sign_in(user)
       get :new
       expect(response).to have_http_status(:redirect)
@@ -113,6 +116,12 @@ RSpec.describe Employers::EmployerProfilesController do
       expect(assigns(:current_plan_year)).to eq employer_profile.active_plan_year
     end
 
+    it "should get invoice when tab invoice selected" do
+      get :show, id: employer_profile.id , tab: "invoice"
+      expect(response).to have_http_status(:success)
+      expect(response).to render_template("show")
+    end
+
     it "should get default status" do
       xhr :get,:show_profile, {employer_profile_id: employer_profile.id.to_s, tab: 'employees'}
       expect(assigns(:status)).to eq "active"
@@ -161,11 +170,11 @@ RSpec.describe Employers::EmployerProfilesController do
 
 
   describe "GET show" do
-    let(:user){ double("User", last_portal_visited: double("last_portal_visited")) }
-    let(:person){ double("Person") }
-    let(:employer_profile) {double("EmployerProfile", id: double("id"))}
+    let(:user) { FactoryGirl.create(:user) }
+    let(:person){ FactoryGirl.create(:person) }
+    let(:employer_profile) {instance_double("EmployerProfile", id: double("id"))}
     let(:hbx_enrollment) {
-      double("HbxEnrollment",
+      instance_double("HbxEnrollment",
         total_premium: 345,
         total_employee_cost: 145,
         total_employer_contribution: 200
@@ -173,35 +182,44 @@ RSpec.describe Employers::EmployerProfilesController do
     }
 
     let(:plan_year) {
-      double("PlanYear",
+      instance_double("PlanYear",
         additional_required_participants_count: 10
         )
     }
 
     let(:policy) {double("policy")}
-    before(:each) do
-      allow(::AccessPolicies::EmployerProfile).to receive(:new).and_return(policy)
-      allow(policy).to receive(:authorize_show).and_return(true)
-      allow(user).to receive(:last_portal_visited=).and_return("true")
-      allow(user).to receive(:save).and_return(true)
-      allow(EmployerProfile).to receive(:find).and_return(employer_profile)
-      allow(employer_profile).to receive(:show_plan_year).and_return(plan_year)
-      allow(plan_year).to receive(:open_enrollment_contains?).and_return(true)
-      allow(plan_year).to receive(:hbx_enrollments).and_return([hbx_enrollment])
 
-      sign_in(user)
-    end
     context "it should return published plan year " do
+      let(:broker_agency_account) { FactoryGirl.build_stubbed(:broker_agency_account) }
+
+      before do
+        allow(::AccessPolicies::EmployerProfile).to receive(:new).and_return(policy)
+        allow(policy).to receive(:authorize_show).and_return(true)
+        allow(user).to receive(:last_portal_visited=).and_return("true")
+        allow(user).to receive(:save).and_return(true)
+        allow(EmployerProfile).to receive(:find).and_return(employer_profile)
+        allow(employer_profile).to receive(:show_plan_year).and_return(plan_year)
+        allow(employer_profile).to receive(:enrollments_for_billing).and_return([hbx_enrollment])
+        allow(employer_profile).to receive(:broker_agency_accounts).and_return([broker_agency_account])
+        allow(employer_profile).to receive_message_chain(:organization ,:documents).and_return([])
+        sign_in(user)
+      end
+
       it "should render the show template" do
         allow(user).to receive(:person).and_return(person)
         get :show, id: employer_profile.id, tab: "home"
         expect(response).to have_http_status(:success)
         expect(response).to render_template("show")
         expect(assigns(:current_plan_year)).to eq plan_year
-        expect(assigns(:employer_contribution_total)).to eq hbx_enrollment.total_employer_contribution
-        expect(assigns(:premium_amt_total)).to eq hbx_enrollment.total_premium
-        expect(assigns(:employee_cost_total)).to eq hbx_enrollment.total_employee_cost
-        expect(assigns(:additional_required_participants_count)).to eq plan_year.additional_required_participants_count
+      end
+
+
+      it "should get announcement" do
+        FactoryGirl.create(:announcement, content: "msg for Employer", audiences: ['Employer'])
+        allow(user).to receive(:person).and_return(person)
+        allow(user).to receive(:has_employer_staff_role?).and_return true
+        get :show, id: employer_profile.id, tab: "home"
+        expect(flash.now[:warning]).to eq ["msg for Employer"]
       end
     end
   end
@@ -347,39 +365,70 @@ RSpec.describe Employers::EmployerProfilesController do
     let(:organization) { double(:employer_profile => double) }
 
     before(:each) do
-      sign_in user
-      allow(user).to receive(:person).and_return(person)
-      allow(user).to receive(:switch_to_idp!)
+      @user = FactoryGirl.create(:user)
+      p=FactoryGirl.create(:person, user: @user)
+      @hbx_staff_role = FactoryGirl.create(:hbx_staff_role, person: p)
+      
+
+      allow(@user).to receive(:switch_to_idp!)
       allow(Forms::EmployerProfile).to receive(:new).and_return(organization)
       allow(organization).to receive(:save).and_return(save_result)
-      post :create, :organization => organization_params
+      
+    end
+    describe 'updateable organization' do
+      before(:each) do
+        allow(@hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        sign_in @user
+        post :create, :organization => organization_params
+      end
+      describe "given an invalid employer profile" do
+        it "assigns the organization" do
+          expect(assigns(:organization)).to eq organization
+        end
+
+        it "returns http success" do
+          expect(response).to have_http_status(:success)
+        end
+
+        it "renders the 'new' template" do
+          expect(response).to render_template("new")
+        end
+      end
+
+      describe "given a valid employer profile" do
+        let(:save_result) { true }
+
+        it "assigns the organization" do
+          expect(assigns(:organization)).to eq organization
+        end
+
+        it "returns http redirect" do
+          expect(response).to have_http_status(:redirect)
+        end
+      end
     end
 
-    describe "given an invalid employer profile" do
-      it "assigns the organization" do
-        expect(assigns(:organization)).to eq organization
+    describe 'update organization not allowed' do
+      before(:each) do
+        allow(@hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: false))
+        sign_in @user
+        post :create, :organization => organization_params
       end
+      
 
-      it "returns http success" do
-        expect(response).to have_http_status(:success)
-      end
+      describe "given a valid employer profile" do
+        let(:save_result) { true }
 
-      it "renders the 'new' template" do
-        expect(response).to render_template("new")
-      end
-    end
+        it "has an error message" do
+           expect(flash[:error]).to match(/Access not allowed/)
+        end
 
-    describe "given a valid employer profile" do
-      let(:save_result) { true }
-
-      it "assigns the organization" do
-        expect(assigns(:organization)).to eq organization
-      end
-
-      it "returns http redirect" do
-        expect(response).to have_http_status(:redirect)
+        it "returns http redirect" do
+          expect(response).to have_http_status(:redirect)
+        end
       end
     end
+
   end
 
   describe "POST create" do
@@ -391,10 +440,14 @@ RSpec.describe Employers::EmployerProfilesController do
     let(:organization) {double(office_locations: office_locations)}
 
     before(:each) do
-      sign_in user
+      @user = FactoryGirl.create(:user)
+      p=FactoryGirl.create(:person, user: @user)
+      @hbx_staff_role = FactoryGirl.create(:hbx_staff_role, person: p)    
+      allow(@hbx_staff_role).to receive_message_chain('permission.modify_employer').and_return(true)
+      sign_in @user
       allow(Forms::EmployerProfile).to receive(:new).and_return(found_employer)
-      allow(user).to receive(:person).and_return(person)
-      allow(user).to receive(:switch_to_idp!)
+      
+      allow(@user).to receive(:switch_to_idp!)
 #      allow(EmployerProfile).to receive(:find_by_fein).and_return(found_employer)
 #      allow(found_employer).to receive(:organization).and_return(organization)
       post :create, :organization => employer_parameters
@@ -547,14 +600,15 @@ RSpec.describe Employers::EmployerProfilesController do
         expect(response).to be_redirect
       end
     end
-    it "should update person info" do
-      allow(user).to receive(:save).and_return(true)
-      sign_in(user)
-      expect(Organization).to receive(:find)
-      put :update, id: organization.id, first_name: "test", organization: organization_params
-      expect(person.first_name).to eq "test"
-      expect(response).to be_redirect
-    end
+    # Refs #3898 Person information cannot be updated!
+    #it "should update person info" do
+    #  allow(user).to receive(:save).and_return(true)
+    #  sign_in(user)
+    #  expect(Organization).to receive(:find)
+    #  put :update, id: organization.id, first_name: "test", organization: organization_params
+    #  expect(person.first_name).to eq "test"
+    #  expect(response).to be_redirect
+    #end
   end
 
   #describe "DELETE destroy" do
@@ -569,4 +623,16 @@ RSpec.describe Employers::EmployerProfilesController do
   #    expect(response).to be_redirect
   #  end
   #end
+
+  describe "GET export_census_employees" do
+    let(:user) { FactoryGirl.create(:user) }
+    let(:employer_profile) { FactoryGirl.create(:employer_profile) }
+
+   it "should export cvs" do
+     sign_in(user)
+     get :export_census_employees, employer_profile_id: employer_profile, format: :csv
+     expect(response).to have_http_status(:success)
+   end
+
+  end
 end

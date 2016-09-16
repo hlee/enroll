@@ -11,6 +11,10 @@ class TimeKeeper
   def initialize
   end
 
+  def self.date_according_to_exchange_at(a_time)
+    a_time.in_time_zone("Eastern Time (US & Canada)").to_date
+  end
+
   def self.set_date_of_record(new_date)
     new_date = new_date.to_date
     if instance.date_of_record != new_date
@@ -66,6 +70,7 @@ class TimeKeeper
     EmployerProfile.advance_day(self.date_of_record)
     Family.advance_day(self.date_of_record)
     HbxEnrollment.advance_day(self.date_of_record)
+    CensusEmployee.advance_day(self.date_of_record)
   end
 
   def self.with_cache

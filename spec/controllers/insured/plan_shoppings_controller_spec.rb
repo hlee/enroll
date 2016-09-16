@@ -2,7 +2,7 @@ require 'rails_helper'
 
 RSpec.describe Insured::PlanShoppingsController, :type => :controller do
 
-  let(:plan) { double("Plan", id: "plan_id", coverage_kind: 'health', carrier_profile_id: 'carrier_profile_id') } 
+  let(:plan) { double("Plan", id: "plan_id", coverage_kind: 'health', carrier_profile_id: 'carrier_profile_id') }
   let(:hbx_enrollment) { double("HbxEnrollment", id: "hbx_id", effective_on: double("effective_on", year: double)) }
   let(:household){ double("Household") }
   let(:family){ double("Family") }
@@ -60,6 +60,27 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
       it "fails" do
         post :checkout, id: "hbx_id", plan_id: "plan_id"
         expect(flash[:error]).to include("You are attempting to purchase coverage prior to your date of hire on record. Please contact your Employer for assistance")
+      end
+    end
+
+    context "hbx_enrollment can not select_coverage" do
+      let(:errors) { double }
+      before :each do
+        request.env["HTTP_REFERER"] = "/home"
+        allow(employee_role).to receive(:hired_on).and_return(TimeKeeper.date_of_record - 10.days)
+        allow(hbx_enrollment).to receive(:may_select_coverage?).and_return false
+        allow(hbx_enrollment).to receive(:errors).and_return(errors)
+        allow(errors).to receive(:full_messages).and_return("You can not keep an existing plan which belongs to previous plan year")
+      end
+
+      it "should redirect" do
+        post :checkout, id: "hbx_id", plan_id: "plan_id"
+        expect(response).to have_http_status(:redirect)
+      end
+
+      it "should get flash" do
+        post :checkout, id: "hbx_id", plan_id: "plan_id"
+        expect(flash[:error]).to include("You can not keep an existing plan which belongs to previous plan year")
       end
     end
   end
@@ -203,13 +224,13 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
   end
 
   context "POST terminate" do
+    let(:enrollment) { HbxEnrollment.new({:aasm_state => "coverage_selected"}) }
     before do
-      allow(HbxEnrollment).to receive(:find).with("hbx_id").and_return(hbx_enrollment)
-      allow(hbx_enrollment).to receive(:may_terminate_coverage?).and_return(true)
-      #allow(hbx_enrollment).to receive(:terminate_coverage!).and_return(true)
-      allow(hbx_enrollment).to receive(:update_current).and_return(true)
-      allow(hbx_enrollment).to receive(:propogate_terminate).and_return(true)
-      sign_in
+      allow(HbxEnrollment).to receive(:find).with("hbx_id").and_return(enrollment)
+      allow(enrollment).to receive(:may_schedule_coverage_termination?).and_return(true)
+      allow(enrollment).to receive(:schedule_coverage_termination!).and_return(true)
+      allow(person).to receive(:primary_family).and_return(Family.new)
+      sign_in user
     end
 
     it "returns http success" do
@@ -219,9 +240,16 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
 
     it "goes back" do
       request.env["HTTP_REFERER"] = terminate_insured_plan_shopping_url(1)
-      allow(hbx_enrollment).to receive(:may_terminate_coverage?).and_return(false)
+      allow(enrollment).to receive(:may_schedule_coverage_termination?).and_return(false)
       post :terminate, id: "hbx_id"
       expect(response).to redirect_to(:back)
+    end
+
+    it "should record termination submitted date on terminate of hbx_enrollment" do
+      expect(enrollment.termination_submitted_on).to eq nil
+      post :terminate, id: "hbx_id"
+      expect(enrollment.termination_submitted_on).to eq TimeKeeper.datetime_of_record
+      expect(response).to be_redirect
     end
   end
 
@@ -229,8 +257,8 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
     before :each do
       allow(HbxEnrollment).to receive(:find).with("hbx_id").and_return(hbx_enrollment)
       allow(hbx_enrollment).to receive(:may_waive_coverage?).and_return(true)
-      allow(hbx_enrollment).to receive(:update_current).and_return(true)
-      allow(hbx_enrollment).to receive(:propogate_waiver).and_return(true)
+      allow(hbx_enrollment).to receive(:waive_coverage_by_benefit_group_assignment).and_return(true)
+      allow(hbx_enrollment).to receive(:shopping?).and_return(true)
       sign_in user
     end
 
@@ -240,14 +268,14 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
       allow(hbx_enrollment).to receive(:waive_coverage).and_return(true)
       allow(hbx_enrollment).to receive(:waiver_reason=).with("waiver").and_return(true)
       post :waive, id: "hbx_id", waiver_reason: "waiver"
-      expect(flash[:notice]).to eq "Waive Successful"
+      expect(flash[:notice]).to eq "Waive Coverage Successful"
       expect(response).to be_redirect
     end
 
     it "should get failure flash message" do
       allow(hbx_enrollment).to receive(:valid?).and_return(false)
       post :waive, id: "hbx_id", waiver_reason: "waiver"
-      expect(flash[:alert]).to eq "Waive Failure"
+      expect(flash[:alert]).to eq "Waive Coverage Failed"
       expect(response).to be_redirect
     end
   end
@@ -257,6 +285,7 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
     let(:plan2) {double("Plan2", id: '11', deductible: '$20', total_employee_cost: 2000, carrier_profile_id: '12346')}
     let(:plan3) {double("Plan3", id: '12', deductible: '$30', total_employee_cost: 3000, carrier_profile_id: '12347')}
     let(:plans) {[plan1, plan2, plan3]}
+    let(:coverage_kind){"health"}
 
     before :each do
       allow(HbxEnrollment).to receive(:find).with("hbx_id").and_return(hbx_enrollment)
@@ -272,7 +301,7 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
       allow(plan1).to receive(:[]).with(:id)
       allow(plan2).to receive(:[]).with(:id)
       allow(plan3).to receive(:[]).with(:id)
-      allow(benefit_group).to receive(:decorated_elected_plans).with(hbx_enrollment).and_return(plans)
+      allow(benefit_group).to receive(:decorated_elected_plans).with(hbx_enrollment, coverage_kind).and_return(plans)
       allow(hbx_enrollment).to receive(:can_complete_shopping?).and_return(true)
       allow(hbx_enrollment).to receive(:effective_on).and_return(Date.new(2015))
       sign_in user

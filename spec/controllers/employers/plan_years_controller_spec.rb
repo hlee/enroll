@@ -5,10 +5,29 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
   let(:plan_year_proxy) { double(id: "id") }
   let(:employer_profile) { double(:plan_years => plan_year_proxy, find_plan_year: plan_year_proxy, id: "test") }
 
+  let(:user) { FactoryGirl.create(:user) } 
+  let(:person) { FactoryGirl.create(:person, user: user) }
+  let(:hbx_staff_role) { FactoryGirl.create(:hbx_staff_role, person: person) }
+
+  describe "GET reference_plan_summary" do
+    let(:qhp_cost_share_variance){ Products::QhpCostShareVariance.new }
+    it 'should return qhp cost share variance for the plan' do
+      allow(Products::QhpCostShareVariance).to receive(:find_qhp_cost_share_variances).and_return([qhp_cost_share_variance])
+      sign_in
+      xhr :get, :reference_plan_summary, coverage_kind: "health", start_on: 2016, hios_id: "48484848", employer_profile_id: "1111", format: :js
+      expect(response).to have_http_status(:success)
+      expect(response).to render_template("reference_plan_summary")
+      expect(assigns[:visit_types].size).to eq 11
+      expect(assigns[:qhps]).to be_an_instance_of(Array)
+      expect(assigns[:qhps].first).to be_an_instance_of(Products::QhpCostShareVariance)
+    end
+  end
+
   describe "GET new" do
 
     before :each do
-      sign_in
+      allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+      sign_in user
       allow(EmployerProfile).to receive(:find).with(employer_profile_id).and_return(employer_profile)
       allow(Organization).to receive(:valid_carrier_names).and_return({'id' => "legal_name"})
       get :new, :employer_profile_id => employer_profile_id
@@ -62,7 +81,8 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       let(:plan_year) {FactoryGirl.build(:plan_year)}
 
       before :each do
-        sign_in
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        sign_in user
         allow(EmployerProfile).to receive(:find).with(employer_profile_id).and_return(employer_profile)
         allow(employer_profile).to receive(:find_plan_year).and_return(plan_year)
         allow(Organization).to receive(:valid_carrier_names).and_return({"id"=> "legal_name"})
@@ -162,22 +182,29 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
    let(:plan_years) {double}
 
    before :each do
-    sign_in
+    allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+    sign_in user
     allow(::Forms::PlanYearForm).to receive(:rebuild).with(plan_year, plan_year_params).and_return(plan_year)
     allow(EmployerProfile).to receive(:find).with(employer_profile_id).and_return(employer_profile)
     allow(employer_profile).to receive(:plan_years).and_return(plan_years)
     allow(plan_years).to receive(:where).and_return([plan_year])
     allow(benefit_group).to receive(:elected_plans=).and_return("test")
+    allow(benefit_group).to receive(:elected_dental_plans=).and_return("test")
     allow(benefit_group).to receive(:plan_option_kind).and_return("single_plan")
+    allow(benefit_group).to receive(:dental_plan_option_kind).and_return("single_carrier")
     allow(benefit_group).to receive(:elected_plans_by_option_kind).and_return([])
+    allow(benefit_group).to receive(:elected_dental_plans_by_option_kind).and_return([])
       #allow(benefit_group).to receive(:reference_plan_id).and_return(FactoryGirl.create(:plan).id)
       allow(benefit_group).to receive(:reference_plan_id).and_return(nil)
       allow(plan_year).to receive(:save).and_return(save_result)
       allow(Organization).to receive(:valid_carrier_names).and_return({"id"=> "legal_name"})
-      post :update, :employer_profile_id => employer_profile_id, id: plan_year.id, :plan_year => plan_year_request_params
     end
 
     describe "with an invalid plan year" do
+      before do
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        post :update, :employer_profile_id => employer_profile_id, id: plan_year.id, :plan_year => plan_year_request_params
+      end
 
       it "should render the new template" do
         expect(response).to have_http_status(:redirect)
@@ -195,7 +222,10 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
 
     describe "with a valid plan year" do
       let(:save_result) { true }
-
+      before do
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        post :update, :employer_profile_id => employer_profile_id, id: plan_year.id, :plan_year => plan_year_request_params
+      end
       it "should assign the new plan year" do
         expect(assigns(:plan_year)).to eq plan_year
       end
@@ -208,6 +238,29 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
         expect(flash[:notice]).to eq "Plan Year successfully saved."
       end
     end
+
+
+    describe "with a valid plan year but not updateable" do
+      let(:save_result) { true }
+      before do
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: false))
+        post :update, :employer_profile_id => employer_profile_id, id: plan_year.id, :plan_year => plan_year_request_params
+      end
+      it "should assign the new plan year" do
+        expect(assigns(:plan_year)).not_to eq plan_year
+      end
+
+      it "should be a redirect" do
+        expect(response).to have_http_status(:redirect)
+      end
+
+      it "should has successful notice" do
+
+        expect(flash[:error]).to match(/Access not allowed/)
+      end
+    end
+
+
   end
 
   describe "POST create" do
@@ -261,13 +314,18 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
  }
 
  before :each do
-  sign_in
+  allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+  sign_in user
   allow(::Forms::PlanYearForm).to receive(:build).with(employer_profile, plan_year_params).and_return(plan_year)
   allow(EmployerProfile).to receive(:find).with(employer_profile_id).and_return(employer_profile)
   allow(employer_profile).to receive(:default_benefit_group).and_return(nil)
   allow(benefit_group).to receive(:elected_plans=).and_return("test")
+  allow(benefit_group).to receive(:elected_dental_plans=).and_return("test")
   allow(benefit_group).to receive(:plan_option_kind).and_return("single_plan")
   allow(benefit_group).to receive(:elected_plans_by_option_kind).and_return([])
+  allow(benefit_group).to receive(:elected_dental_plans_by_option_kind).and_return([])
+  allow(benefit_group).to receive(:dental_plan_option_kind).and_return("single_carrier")
+
   allow(benefit_group).to receive(:default=)
       #allow(benefit_group).to receive(:reference_plan_id).and_return(FactoryGirl.create(:plan).id)
       allow(benefit_group).to receive(:reference_plan_id).and_return(nil)
@@ -374,10 +432,11 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
 
   describe "POST publish" do
     let(:plan_year_id) { "plan_year_id"}
-    let(:plan_year_proxy) { instance_double("PlanYear", publish!: double)}
+    let(:plan_year_proxy) { instance_double("PlanYear", publish!: double, may_publish?: true)}
 
     before :each do
-      sign_in
+      allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+      sign_in user
       allow(EmployerProfile).to receive(:find).with(employer_profile_id).and_return(employer_profile)
       allow(plan_year_proxy).to receive(:draft?).and_return(false)
       allow(plan_year_proxy).to receive(:publish_pending?).and_return(false)
@@ -428,11 +487,48 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
         allow(plan_year_proxy).to receive(:enrolling?).and_return(false)
         allow(plan_year_proxy).to receive(:renewing_published?).and_return(false)
         allow(plan_year_proxy).to receive(:renewing_enrolling?).and_return(false)
+        allow(plan_year_proxy).to receive(:may_publish?).and_return(false)
+        allow(plan_year_proxy).to receive(:application_errors).and_return({:values => []})
+        allow(plan_year_proxy).to receive(:enrollment_period_errors).and_return([])
       end
 
       it "should redirect with errors" do
         xhr :post, :publish, employer_profile_id: employer_profile_id, plan_year_id: plan_year_id
         expect(flash[:error]).to match(/Plan Year failed to publish/)
+      end
+    end
+
+    context "plan year successfully published when renewing published" do
+      before :each do
+        allow(plan_year_proxy).to receive(:publish_pending?).and_return(false)
+        allow(plan_year_proxy).to receive(:published?).and_return(false)
+        allow(plan_year_proxy).to receive(:enrolling?).and_return(false)
+        allow(plan_year_proxy).to receive(:renewing_published?).and_return(true)
+        allow(plan_year_proxy).to receive(:renewing_enrolling?).and_return(false)
+        allow(plan_year_proxy).to receive(:may_publish?).and_return(false)
+        allow(plan_year_proxy).to receive(:assigned_census_employees_without_owner).and_return([double])
+      end
+
+      it "should redirect with success message" do
+        xhr :post, :publish, employer_profile_id: employer_profile_id, plan_year_id: plan_year_id
+        expect(flash[:notice]).to match(/Plan Year successfully published./)
+      end
+    end
+
+    context "plan year successfully published when enrolling" do
+      before :each do
+        allow(plan_year_proxy).to receive(:publish_pending?).and_return(false)
+        allow(plan_year_proxy).to receive(:published?).and_return(false)
+        allow(plan_year_proxy).to receive(:enrolling?).and_return(true)
+        allow(plan_year_proxy).to receive(:renewing_published?).and_return(false)
+        allow(plan_year_proxy).to receive(:renewing_enrolling?).and_return(false)
+        allow(plan_year_proxy).to receive(:may_publish?).and_return(false)
+        allow(plan_year_proxy).to receive(:assigned_census_employees_without_owner).and_return([double])
+      end
+
+      it "should redirect with success message" do
+        xhr :post, :publish, employer_profile_id: employer_profile_id, plan_year_id: plan_year_id
+        expect(flash[:notice]).to match(/Plan Year successfully published./)
       end
     end
   end
@@ -442,7 +538,8 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
     let(:plan_year_proxy) { instance_double("PlanYear", publish!: double)}
 
     before :each do
-      sign_in
+      allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+      sign_in user
       allow(EmployerProfile).to receive(:find).with(employer_profile_id).and_return(employer_profile)
       allow(plan_year_proxy).to receive(:force_publish!)
       post :force_publish, employer_profile_id: employer_profile_id, plan_year_id: plan_year_id
@@ -493,9 +590,8 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       allow(@employer_profile).to receive(:census_employees).and_return(census_employees)
       allow(census_employees).to receive(:active).and_return(@census_employees)
       allow(plan_year).to receive(:employer_profile).and_return(@employer_profile)
-
       sign_in
-      xhr :get, :employee_costs, employer_profile_id: @employer_profile.id, reference_plan_id: @reference_plan.id
+      xhr :get, :employee_costs, employer_profile_id: @employer_profile.id, reference_plan_id: @reference_plan.id, coverage_type: '.health'
 
       expect(response).to have_http_status(:success)
     end
@@ -537,7 +633,7 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       let(:benefit_group)     { FactoryGirl.build(:benefit_group)}
       let(:plan_year)         do
         py = FactoryGirl.build(:plan_year, benefit_groups: [default_benefit_group, benefit_group])
-        py.open_enrollment_end_on = py.open_enrollment_start_on + 1.day
+        py.open_enrollment_end_on = py.open_enrollment_start_on - 1.day
         py
       end
       let!(:employer_profile)  { EmployerProfile.new(**valid_params, plan_years: [plan_year]) }
@@ -548,7 +644,8 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
 
       before do
         employer_profile.save(:validate => false)
-        sign_in
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        sign_in user
       end
 
       it "should log the validation error" do
@@ -562,7 +659,7 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       it "should raise the error" do
         expect do
           post :make_default_benefit_group, employer_profile_id: employer_profile.id.to_s, plan_year_id: plan_year.id.to_s, benefit_group_id: benefit_group.id.to_s, format: :js
-        end.to raise_error
+        end.to raise_error(Mongoid::Errors::Validations)
       end
     end
   end
@@ -614,7 +711,8 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       end
 
       it "should calculate employer contributions" do
-        sign_in
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        sign_in user
         xhr :post, :make_default_benefit_group, employer_profile_id: employer_profile.id.to_s, plan_year_id: plan_year.id.to_s, benefit_group_id: benefit_group.id.to_s, format: :js
         default_benefit_groups = employer_profile.reload.plan_years.first.benefit_groups.select{|bg| bg.default }
         expect(default_benefit_groups.count).to eq 1
@@ -629,7 +727,8 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       end
 
       it "should calculate employer contributions" do
-        sign_in
+        allow(hbx_staff_role).to receive(:permission).and_return(double('Permission', modify_employer: true))
+        sign_in user
         xhr :post, :make_default_benefit_group, employer_profile_id: employer_profile1.id, plan_year_id: new_plan_year.id, benefit_group_id: new_benefit_group.id.to_s, format: :js
         employer_profile1.reload
         plan_year1 = employer_profile1.plan_years.where(id: plan_year.id).first

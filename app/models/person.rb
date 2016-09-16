@@ -9,7 +9,7 @@ class Person
   include FullStrippedNames
 
   extend Mongorder
-  validates_with Validations::DateRangeValidator
+#  validates_with Validations::DateRangeValidator
 
 
   GENDER_KINDS = %W(male female)
@@ -65,6 +65,11 @@ class Person
                 inverse_of: :broker_agency_contacts,
                 index: true
 
+  belongs_to :general_agency_contact,
+                class_name: "GeneralAgencyProfile",
+                inverse_of: :general_agency_contacts,
+                index: true
+
   embeds_one :consumer_role, cascade_callbacks: true, validate: true
   embeds_one :broker_role, cascade_callbacks: true, validate: true
   embeds_one :hbx_staff_role, cascade_callbacks: true, validate: true
@@ -76,11 +81,13 @@ class Person
   embeds_many :employer_staff_roles, cascade_callbacks: true, validate: true
   embeds_many :broker_agency_staff_roles, cascade_callbacks: true, validate: true
   embeds_many :employee_roles, cascade_callbacks: true, validate: true
+  embeds_many :general_agency_staff_roles, cascade_callbacks: true, validate: true
 
   embeds_many :person_relationships, cascade_callbacks: true, validate: true
   embeds_many :addresses, cascade_callbacks: true, validate: true
   embeds_many :phones, cascade_callbacks: true, validate: true
   embeds_many :emails, cascade_callbacks: true, validate: true
+  embeds_many :documents, as: :documentable
 
   accepts_nested_attributes_for :consumer_role, :responsible_party, :broker_role, :hbx_staff_role,
     :person_relationships, :employee_roles, :phones, :employer_staff_roles
@@ -109,6 +116,7 @@ class Person
   before_save :generate_hbx_id
   before_save :update_full_name
   before_save :strip_empty_fields
+  after_save :generate_family_search
   after_create :create_inbox
 
   index({hbx_id: 1}, {sparse:true, unique: true})
@@ -174,13 +182,18 @@ class Person
 
   scope :broker_role_having_agency, -> { where("broker_role.broker_agency_profile_id" => { "$ne" => nil }) }
   scope :broker_role_applicant,     -> { where("broker_role.aasm_state" => { "$eq" => :applicant })}
+  scope :broker_role_pending,       -> { where("broker_role.aasm_state" => { "$eq" => :broker_agency_pending })}
   scope :broker_role_certified,     -> { where("broker_role.aasm_state" => { "$in" => [:active, :broker_agency_pending]})}
   scope :broker_role_decertified,   -> { where("broker_role.aasm_state" => { "$eq" => :decertified })}
   scope :broker_role_denied,        -> { where("broker_role.aasm_state" => { "$eq" => :denied })}
   scope :by_ssn,                    ->(ssn) { where(encrypted_ssn: Person.encrypt_ssn(ssn)) }
-  scope :unverified_persons,        -> {Person.in(:'consumer_role.aasm_state'=>['verifications_outstanding', 'verifications_pending'])}
+  scope :unverified_persons,        -> { where(:'consumer_role.aasm_state' => { "$ne" => "fully_verified" })}
   scope :matchable,                 ->(ssn, dob, last_name) { where(encrypted_ssn: Person.encrypt_ssn(ssn), dob: dob, last_name: last_name) }
 
+  scope :general_agency_staff_applicant,     -> { where("general_agency_staff_roles.aasm_state" => { "$eq" => :applicant })}
+  scope :general_agency_staff_certified,     -> { where("general_agency_staff_roles.aasm_state" => { "$eq" => :active })}
+  scope :general_agency_staff_decertified,   -> { where("general_agency_staff_roles.aasm_state" => { "$eq" => :decertified })}
+  scope :general_agency_staff_denied,        -> { where("general_agency_staff_roles.aasm_state" => { "$eq" => :denied })}
 
 #  ViewFunctions::Person.install_queries
 
@@ -243,6 +256,8 @@ class Person
   end
 
   delegate :citizen_status, :citizen_status=, :to => :consumer_role, :allow_nil => true
+
+  delegate :ivl_coverage_selected, :to => :consumer_role, :allow_nil => true
 
   # before_save :notify_change
   # def notify_change
@@ -324,9 +339,19 @@ class Person
     @full_name = [name_pfx, first_name, middle_name, last_name, name_sfx].compact.join(" ")
   end
 
+  def first_name_last_name_and_suffix
+    [first_name, last_name, name_sfx].compact.join(" ")
+    case name_sfx
+      when "ii" ||"iii" || "iv" || "v"
+        [first_name.capitalize, last_name.capitalize, name_sfx.upcase].compact.join(" ")
+      else
+        [first_name.capitalize, last_name.capitalize, name_sfx].compact.join(" ")
+      end
+  end
+
   def age_on(date)
     age = date.year - dob.year
-    if date.month < dob.month or (date.month == dob.month and date.day < dob.day)
+    if date.month < dob.month || (date.month == dob.month && date.day < dob.day)
       age - 1
     else
       age
@@ -339,6 +364,18 @@ class Person
 
   def is_active?
     is_active
+  end
+
+  # collect all verification types user can have based on information he provided
+  def verification_types
+    verification_types = []
+    verification_types << 'Social Security Number' if self.ssn
+    if self.us_citizen
+      verification_types << 'Citizenship'
+    else
+      verification_types << 'Immigration status'
+    end
+    verification_types
   end
 
   def relatives
@@ -392,12 +429,21 @@ class Person
     addresses.detect { |adr| adr.kind == "mailing" } || home_address
   end
 
+  def has_mailing_address?
+    addresses.any? { |adr| adr.kind == "mailing" }
+  end
+
   def home_email
     emails.detect { |adr| adr.kind == "home" }
   end
 
   def work_email
     emails.detect { |adr| adr.kind == "work" }
+  end
+
+  def work_email_or_best
+    email = emails.detect { |adr| adr.kind == "work" } || emails.first
+    (email && email.address) || (user && user.email)
   end
 
   def work_phone
@@ -416,20 +462,41 @@ class Person
     phones.detect { |phone| phone.kind == "mobile" }
   end
 
+  def work_phone_or_best
+    best_phone  = work_phone || mobile_phone || home_phone
+    best_phone ? best_phone.full_phone_number : nil
+  end
+
   def has_active_consumer_role?
     consumer_role.present? and consumer_role.is_active?
   end
 
+  def can_report_shop_qle?
+    employee_roles.first.census_employee.qle_30_day_eligible?
+  end
+
   def has_active_employee_role?
-    employee_roles.present? and employee_roles.active.present?
+    active_employee_roles.any?
+  end
+
+  def has_employer_benefits?
+    active_employee_roles.present? && active_employee_roles.first.benefit_group.present?
   end
 
   def active_employee_roles
-    employee_roles.present? ? employee_roles.active : []
+    employee_roles.select{|employee_role| employee_role.census_employee && employee_role.census_employee.is_active? }
+  end
+
+  def has_active_employer_staff_role?
+    employer_staff_roles.present? and employer_staff_roles.active.present?
+  end
+
+  def active_employer_staff_roles
+    employer_staff_roles.present? ? employer_staff_roles.active : []
   end
 
   def has_multiple_roles?
-    consumer_role.present? && employee_roles.present?
+    consumer_role.present? && active_employee_roles.present?
   end
 
   def residency_eligible?
@@ -437,8 +504,8 @@ class Person
   end
 
   def is_dc_resident?
-    return false if no_dc_address == true and no_dc_address_reason.blank?
-    return true if no_dc_address == true and no_dc_address_reason.present?
+    return false if no_dc_address == true && no_dc_address_reason.blank?
+    return true if no_dc_address == true && no_dc_address_reason.present?
 
     address_to_use = addresses.collect(&:kind).include?('home') ? 'home' : 'mailing'
     addresses.each{|address| return true if address.kind == address_to_use && address.state == 'DC'}
@@ -503,12 +570,26 @@ class Person
     end
 
     def find_all_staff_roles_by_employer_profile(employer_profile)
-      where({"$and"=>[{"employer_staff_roles.employer_profile_id"=> employer_profile.id}, {"employer_staff_roles.is_owner"=>true}]})
+      #where({"$and"=>[{"employer_staff_roles.employer_profile_id"=> employer_profile.id}, {"employer_staff_roles.is_owner"=>true}]})
+      staff_for_employer(employer_profile)
     end
 
     def match_existing_person(personish)
       return nil if personish.ssn.blank?
       Person.where(:encrypted_ssn => encrypt_ssn(personish.ssn), :dob => personish.dob).first
+    end
+
+    def person_has_an_active_enrollment?(person)
+      if !person.primary_family.blank? && !person.primary_family.enrollments.blank?
+        person.primary_family.enrollments.each do |enrollment|
+          return true if enrollment.is_active
+        end
+      end
+      return false
+    end
+
+    def find_by_ssn(ssn)
+      Person.where(encrypted_ssn: Person.encrypt_ssn(ssn)).first
     end
 
     # Return an instance list of active People who match identifying information criteria
@@ -539,6 +620,54 @@ class Person
                          ).selector
                )
     end
+
+    def staff_for_employer(employer_profile)
+      staff_had_role = self.where(:'employer_staff_roles.employer_profile_id' => employer_profile.id)
+      staff_had_role.map(&:employer_staff_roles).flatten.select{|r|r.is_active?}.map(&:person)
+    end
+
+    def staff_for_employer_including_pending(employer_profile)
+      self.where(:employer_staff_roles => {
+        '$elemMatch' => {
+            employer_profile_id: employer_profile.id,
+            :aasm_state.ne => :is_closed
+        }
+        })
+    end
+
+    # Adds employer staff role to person
+    # Returns status and message if failed
+    # Returns status and person if successful
+    def add_employer_staff_role(first_name, last_name, dob, email, employer_profile)
+      person = Person.where(first_name: /^#{first_name}$/i, last_name: /^#{last_name}$/i, dob: dob)
+
+      return false, 'Person count too high, please contact HBX Admin' if person.count > 1
+      return false, 'Person does not exist on the HBX Exchange' if person.count == 0
+
+      employer_staff_role = EmployerStaffRole.create(person: person.first, employer_profile_id: employer_profile._id)
+      employer_staff_role.save
+      return true, person.first
+    end
+
+    # Sets employer staff role to inactive
+    # Returns false if person not found
+    # Returns false if employer staff role not matches
+    # Returns true is role was marked inactive
+    def deactivate_employer_staff_role(person_id, employer_profile_id)
+
+      begin
+        person = Person.find(person_id)
+      rescue
+        return false, 'Person not found'
+      end
+      if (roles = person.employer_staff_roles.select{ |role| role.employer_profile_id.to_s == employer_profile_id.to_s }).present?
+        roles.each { |role| role.update_attributes!(:aasm_state => :is_closed) }
+        return true, 'Employee Staff Role is inactive'
+      else
+        return false, 'No matching employer staff role'
+      end
+    end
+
   end
 
   # HACK
@@ -616,8 +745,35 @@ class Person
   end
 
   def agent?
-    agent = self.csr_role || self.assister_role || self.broker_role || self.hbx_staff_role
+    agent = self.csr_role || self.assister_role || self.broker_role || self.hbx_staff_role || self.general_agency_staff_roles.present?
     !!agent
+  end
+
+  def contact_info(email_address, area_code, number, extension)
+    if email_address.present?
+      email = emails.detect{|mail|mail.kind == 'work'}
+      if email
+        email.update_attributes!(address: email_address)
+      else
+        email= Email.new(kind: 'work', address: email_address)
+        emails.append(email)
+        self.update_attributes!(emails: emails)
+        save!
+      end
+    end
+    phone = phones.detect{|p|p.kind == 'work'}
+    if phone
+      phone.update_attributes!(area_code: area_code, number: number, extension: extension)
+    else
+      phone = Phone.new(kind: 'work', area_code: area_code, number: number, extension: extension)
+      phones.append(phone)
+      self.update_attributes!(phones: phones)
+      save!
+    end
+  end
+
+  def generate_family_search
+    ::MapReduce::FamilySearchForPerson.populate_for(self)
   end
 
   private
@@ -647,7 +803,7 @@ class Person
     welcome_subject = "Welcome to #{Settings.site.short_name}"
     welcome_body = "#{Settings.site.short_name} is the #{Settings.aca.state_name}'s on-line marketplace to shop, compare, and select health insurance that meets your health needs and budgets."
     mailbox = Inbox.create(recipient: self)
-    mailbox.messages.create(subject: welcome_subject, body: welcome_body, from: 'DC Health Link')
+    mailbox.messages.create(subject: welcome_subject, body: welcome_body, from: "#{Settings.site.short_name}")
   end
 
   def update_full_name

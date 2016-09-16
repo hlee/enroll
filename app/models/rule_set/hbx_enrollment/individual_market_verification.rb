@@ -8,7 +8,8 @@ module RuleSet
       end
 
       def applicable?
-        hbx_enrollment.affected_by_verifications_made_today? && (!hbx_enrollment.benefit_sponsored?)
+        (!hbx_enrollment.plan_id.nil?) &&
+          hbx_enrollment.affected_by_verifications_made_today? && (!hbx_enrollment.benefit_sponsored?)
       end
 
       def roles_for_determination
@@ -16,8 +17,8 @@ module RuleSet
       end
 
       def determine_next_state
-        return(:move_to_pending!) if roles_for_determination.any?(&:verifications_pending?)
-        return(:move_to_contingent!) if roles_for_determination.any?(&:verifications_outstanding?)
+        return(:move_to_contingent!) if roles_for_determination.any?(&:verification_outstanding?) || roles_for_determination.any?(&:verification_period_ended?)
+        return(:move_to_pending!) if roles_for_determination.any?(&:ssa_pending?) || roles_for_determination.any?(&:dhs_pending?)
         :move_to_enrolled!
       end
     end

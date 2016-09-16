@@ -7,6 +7,7 @@ RSpec.describe "employers/employer_profiles/_employer_form.html.erb" do
 
   before :each do
     allow(organization).to receive(:employer_profile).and_return employer_profile
+    allow(view).to receive(:policy_helper).and_return(double("Policy", updateable?: false))
     assign(:employer_profile, employer_profile)
     assign(:organization, organization)
     assign(:employer, person)
@@ -18,9 +19,9 @@ RSpec.describe "employers/employer_profiles/_employer_form.html.erb" do
   end
 
   it "should show person info" do
-    expect(rendered).to match /Personal Information/
-    expect(rendered).to have_selector("input[name='first_name']")
-    expect(rendered).to have_selector("input[name='last_name']")
-    expect(rendered).to have_selector("input[name='dob']")
+    expect(rendered).to match /Employer Information/
+    expect(rendered).to match /Point of Contact - Employer Staff/
+    expect(rendered).to match  /Last Name/
+
   end
 end

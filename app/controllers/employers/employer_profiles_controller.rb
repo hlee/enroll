@@ -1,13 +1,16 @@
-class Employers::EmployerProfilesController < ApplicationController
+class Employers::EmployerProfilesController < Employers::EmployersController
 
   before_action :find_employer, only: [:show, :show_profile, :destroy, :inbox,
-                                       :bulk_employee_upload, :bulk_employee_upload_form]
+                                       :bulk_employee_upload, :bulk_employee_upload_form, :download_invoice, :export_census_employees]
 
   before_action :check_show_permissions, only: [:show, :show_profile, :destroy, :inbox, :bulk_employee_upload, :bulk_employee_upload_form]
   before_action :check_index_permissions, only: [:index]
   before_action :check_employer_staff_role, only: [:new]
+  before_action :check_access_to_organization, only: [:edit]
+  before_action :check_and_download_invoice, only: [:download_invoice]
+  around_action :wrap_in_benefit_group_cache, only: [:show]
   skip_before_action :verify_authenticity_token, only: [:show], if: :check_origin?
-
+  before_action :updateable?, only: [:create, :update]
   layout "two_column", except: [:new]
 
   def index
@@ -90,28 +93,22 @@ class Employers::EmployerProfilesController < ApplicationController
       case @tab
       when 'benefits'
         @current_plan_year = @employer_profile.renewing_plan_year || @employer_profile.active_plan_year
-        @plan_years = @employer_profile.plan_years.order(id: :desc)
+        sort_plan_years(@employer_profile.plan_years)
       when 'documents'
       when 'employees'
+        @current_plan_year = @employer_profile.show_plan_year
         paginate_employees
       when 'brokers'
         @broker_agency_accounts = @employer_profile.broker_agency_accounts
       when 'inbox'
 
       else
+        @broker_agency_accounts = @employer_profile.broker_agency_accounts
         @current_plan_year = @employer_profile.show_plan_year
+        collect_and_sort_invoices(params[:sort_order])
+        @sort_order = params[:sort_order].nil? || params[:sort_order] == "ASC" ? "DESC" : "ASC"
 
-        if @current_plan_year.present? && @current_plan_year.open_enrollment_contains?(TimeKeeper.date_of_record)
-          @additional_required_participants_count = @current_plan_year.additional_required_participants_count
-
-          #FIXME commeted out for performance test
-          enrollments = @current_plan_year.hbx_enrollments
-          if enrollments.size < 100
-            @premium_amt_total = enrollments.map(&:total_premium).sum
-            @employee_cost_total = enrollments.map(&:total_employee_cost).sum
-            @employer_contribution_total = enrollments.map(&:total_employer_contribution).sum
-          end
-        end
+        set_flash_by_announcement if @tab == 'home'
       end
     end
   end
@@ -142,39 +139,38 @@ class Employers::EmployerProfilesController < ApplicationController
   def edit
     @organization = Organization.find(params[:id])
     @employer_profile = @organization.employer_profile
-    @employer = @employer_profile.match_employer(current_user)
-    @employer_contact = @employer_profile.staff_roles.first
-
-    if @employer_contact.try(:emails)
-      @employer_contact.emails.any? ? @employer_contact_email = @employer_contact.emails.first : @employer_contact_email = @employer_contact.user.email
-    else
-      @employer_contact_email = @employer_contact.user.email
-    end
-
-    @current_user_is_hbx_staff = current_user.has_hbx_staff_role?
-    @current_user_is_broker = current_user.has_broker_agency_staff_role?
+    @staff = Person.staff_for_employer_including_pending(@employer_profile)
+    @add_staff = params[:add_staff]
   end
 
   def create
+
     params.permit!
     @organization = Forms::EmployerProfile.new(params[:organization])
     organization_saved = false
     begin
-      organization_saved = @organization.save(current_user)
+      organization_saved, pending = @organization.save(current_user, params[:employer_id])
     rescue Exception => e
       flash[:error] = e.message
       render action: "new"
       return
     end
-
     if organization_saved
       @person = current_user.person
       create_sso_account(current_user, current_user.person, 15, "employer") do
-        redirect_to employers_employer_profile_path(@organization.employer_profile, tab: 'home')
+        if pending
+          # flash[:notice] = 'Your Employer Staff application is pending'
+          render action: 'show_pending'
+        else
+          redirect_to employers_employer_profile_path(@organization.employer_profile, tab: 'home')
+        end
       end
     else
       render action: "new"
     end
+  end
+
+  def show_pending
   end
 
   def update
@@ -184,21 +180,16 @@ class Employers::EmployerProfilesController < ApplicationController
 
     #save duplicate office locations as json in case we need to refresh
     @organization_dup = @organization.office_locations.as_json
-
     @employer_profile = @organization.employer_profile
     @employer = @employer_profile.match_employer(current_user)
-    if current_user.has_employer_staff_role? && @employer_profile.staff_roles.include?(current_user.person)
+    if (current_user.has_employer_staff_role? && @employer_profile.staff_roles.include?(current_user.person)) || current_user.person.agent?
       @organization.assign_attributes(organization_profile_params)
 
       #clear office_locations, don't worry, we will recreate
       @organization.assign_attributes(:office_locations => [])
       @organization.save(validate: false)
 
-      #Fix issue 3770. Make sure DOB is in correct format
-      employer_attributes = employer_params
-      employer_attributes["dob"] = DateTime.strptime(employer_attributes["dob"], '%m/%d/%Y').try(:to_date)
-
-      if @organization.update_attributes(employer_profile_params) and @employer.update_attributes(employer_attributes)
+      if @organization.update_attributes(employer_profile_params)
         flash[:notice] = 'Employer successfully Updated.'
         redirect_to edit_employers_employer_profile_path(@organization)
       else
@@ -231,8 +222,21 @@ class Employers::EmployerProfilesController < ApplicationController
     redirect_to family_account_path
   end
 
+  def export_census_employees
+    respond_to do |format|
+      format.csv { send_data @employer_profile.census_employees.sorted.to_csv, filename: "#{@employer_profile.legal_name.parameterize.underscore}_census_employees_#{TimeKeeper.date_of_record}.csv" }
+    end
+  end
+
   def bulk_employee_upload_form
 
+  end
+
+  def download_invoice
+    options={}
+    options[:content_type] = @invoice.type
+    options[:filename] = @invoice.title
+    send_data Aws::S3Storage.find(@invoice.identifier) , options
   end
 
   def bulk_employee_upload
@@ -252,16 +256,36 @@ class Employers::EmployerProfilesController < ApplicationController
 
   end
 
-  def redirect_to_new
-    redirect_to new_employers_employer_profile_path
-  end
-
   def redirect_to_first_allowed
     redirect_to employers_employer_profile_path(:id => current_user.person.employer_staff_roles.first.employer_profile_id)
   end
 
 
   private
+
+  def updateable?
+    authorize EmployerProfile, :updateable?
+  end
+
+  def collect_and_sort_invoices(sort_order='ASC')
+    @invoices = @employer_profile.organization.try(:documents)
+    sort_order == 'ASC' ? @invoices.sort_by!(&:date) : @invoices.sort_by!(&:date).reverse! unless @documents
+  end
+
+  def check_and_download_invoice
+    @invoice = @employer_profile.organization.documents.find(params[:invoice_id])
+  end
+
+  def sort_plan_years(plans)
+    renewing_states = PlanYear::RENEWING_PUBLISHED_STATE + PlanYear::RENEWING
+    renewing = plans.select { |plan_year| renewing_states.include? plan_year.aasm_state }
+    ineligible_plans, active_plans = plans.partition { |plan_year| PlanYear::INELIGIBLE_FOR_EXPORT_STATES.include? plan_year.aasm_state }
+    ineligible_plans = ineligible_plans.select { |plan_year| renewing.exclude? plan_year }
+    active_plans = active_plans.partition { |plan_year| PlanYear::PUBLISHED.include? plan_year.aasm_state }.flatten
+    active_plans = active_plans.select { |plan_year| renewing.exclude? plan_year }
+    @plan_years = renewing + active_plans + ineligible_plans
+  end
+
   def paginate_employees
     status_params = params.permit(:id, :status, :search)
     @status = status_params[:status] || 'active'
@@ -297,8 +321,8 @@ class Employers::EmployerProfilesController < ApplicationController
   end
 
   def check_employer_staff_role
-    if current_user.has_employer_staff_role?
-      redirect_to employers_employer_profile_path(:id => current_user.person.employer_staff_roles.first.employer_profile_id, :tab => "home")
+    if current_user.person && current_user.person.has_active_employer_staff_role?
+      redirect_to employers_employer_profile_path(:id => current_user.person.active_employer_staff_roles.first.employer_profile_id, :tab => "home")
     end
   end
 
@@ -338,6 +362,13 @@ class Employers::EmployerProfilesController < ApplicationController
     end
   end
 
+  def check_access_to_organization
+    id = params.permit(:id)[:id]
+    organization = Organization.find(id)
+    policy = ::AccessPolicies::EmployerProfile.new(current_user)
+    policy.authorize_edit(organization.employer_profile, self)
+  end
+
   def find_employer
     id_params = params.permit(:id, :employer_profile_id)
     id = id_params[:id] || id_params[:employer_profile_id]
@@ -351,10 +382,6 @@ class Employers::EmployerProfilesController < ApplicationController
       :employer_profile_attributes => [:legal_name, :entity_kind, :dba]
     )
   end
-
-
-
-
 
   def employer_profile_params
     params.require(:organization).permit(
@@ -371,9 +398,9 @@ class Employers::EmployerProfilesController < ApplicationController
   def sanitize_employer_profile_params
     params[:organization][:office_locations_attributes].each do |key, location|
       params[:organization][:office_locations_attributes].delete(key) unless location['address_attributes']
-      location.delete('phone_attributes') if (location['phone_attributes'].present? and location['phone_attributes']['number'].blank?)
+      location.delete('phone_attributes') if (location['phone_attributes'].present? && location['phone_attributes']['number'].blank?)
       office_locations = params[:organization][:office_locations_attributes]
-      if office_locations and office_locations[key]
+      if office_locations && office_locations[key]
         params[:organization][:office_locations_attributes][key][:is_primary] = (office_locations[key][:address_attributes][:kind] == 'primary')
       end
     end
@@ -397,6 +424,15 @@ class Employers::EmployerProfilesController < ApplicationController
     @organization
   end
 
+  def wrap_in_benefit_group_cache
+#    prof_result = RubyProf.profile do
+      Caches::RequestScopedCache.allocate(:employer_calculation_cache_for_benefit_groups)
+      yield
+      Caches::RequestScopedCache.release(:employer_calculation_cache_for_benefit_groups)
+#    end
+#    printer = RubyProf::MultiPrinter.new(prof_result)
+#    printer.print(:path => File.join(Rails.root, "rprof"), :profile => "profile")
+  end
 
   def employer_params
     params.permit(:first_name, :last_name, :dob)

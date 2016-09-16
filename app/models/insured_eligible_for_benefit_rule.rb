@@ -57,7 +57,7 @@ class InsuredEligibleForBenefitRule
 
     cost_sharing = @benefit_package.cost_sharing
     csr_kind = tax_household.current_csr_eligibility_kind
-    return true if csr_kind.blank? or cost_sharing.blank?
+    return true if csr_kind.blank? || cost_sharing.blank?
     csr_kind == cost_sharing
   end
 
@@ -70,7 +70,8 @@ class InsuredEligibleForBenefitRule
   end
 
   def is_family_relationships_satisfied?
-    true
+    age = age_on_next_effective_date(@role.dob)
+    relation_ship_with_primary_applicant == 'child' && age > 26 ? false : true
   end
 
   def is_benefit_categories_satisfied?
@@ -88,13 +89,13 @@ class InsuredEligibleForBenefitRule
   def is_residency_status_satisfied?
     return true if @benefit_package.residency_status.include?("any")
 
-    if @benefit_package.residency_status.include?("state_resident") and @role.present?
+    if @benefit_package.residency_status.include?("state_resident") && @role.present?
       person = @role.person
       return true if person.is_dc_resident?
 
       #TODO person can have more than one families
       person.families.last.family_members.active.each do |family_member|
-        if age_on_next_effective_date(family_member.dob) >= 19 and family_member.is_dc_resident?
+        if age_on_next_effective_date(family_member.dob) >= 19 && family_member.is_dc_resident?
           return true
         end
       end
@@ -139,10 +140,21 @@ class InsuredEligibleForBenefitRule
   private
 
   def is_verification_satisfied?
+    return true if Settings.aca.individual_market.verification_outstanding_window.days == 0
     !(@role.lawful_presence_determination.aasm_state == "verification_outstanding" && !@role.lawful_presence_determination.latest_denial_date.try(:+, Settings.aca.individual_market.verification_outstanding_window.days).try(:>, TimeKeeper.date_of_record))
   end
 
   def is_person_vlp_verified?
     @role.aasm_state == "fully_verified" ? true : false
   end
+
+  def primary_applicant
+    @role.person.families.last.family_members.select {|s| s.is_primary_applicant}.first || nil
+  end
+
+  def relation_ship_with_primary_applicant
+    primary_applicant.person.person_relationships.select {|r|r.relative_id.to_s == @role.person.id.to_s}.first.try(:kind) || nil
+  # @role.person.person_relationships.select {|r| r.person.id.to_s == primary_applicant.person_id.to_s }.first.try(:kind) || nil
+  end
+
 end

@@ -12,7 +12,7 @@ module Forms
     include NpnField
 
     validates :market_kind,
-      inclusion: { in: ::BrokerAgencyProfile::MARKET_KINDS, message: "%{value} is not a valid market kind" },
+      inclusion: { in: ::BrokerAgencyProfile::MARKET_KINDS, message: "%{value} is not a valid practice area" },
       allow_blank: false
 
     validates :email, :email => true, :allow_blank => false
@@ -54,7 +54,8 @@ module Forms
       self.broker_agency_profile = organization.broker_agency_profile
       self.broker_agency_profile.primary_broker_role = person.broker_role
       self.broker_agency_profile.save!
-      person.broker_role.update_attributes({ broker_agency_profile_id: broker_agency_profile.id })
+      person.broker_role.update_attributes({ broker_agency_profile_id: broker_agency_profile.id , market_kind:  market_kind })
+      UserMailer.broker_application_confirmation(person).deliver_now
       # person.update_attributes({ broker_agency_staff_roles: [::BrokerAgencyStaffRole.new(:broker_agency_profile => broker_agency_profile)]})
       true
     end

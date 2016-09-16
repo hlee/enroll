@@ -1,9 +1,12 @@
 $(document).ready(function() {
 	$('#new_person_wrapper #btn-continue').on('click', function() {
-		if ( $('#employee-sponsored-benefits').is(':checked') ) {
-			$('#new_employment_relationship').submit();
-		} else {
-			$('.new_person:last').submit();
+		if ( $('.select-employer input').is(':checked') ) {
+			if ( $('.select-employer input:checked').hasClass('employer-sponsored') ) {
+				var form_class = $('.select-employer input:checked').attr('id');
+				$('form.'+form_class).submit();
+			} else {
+				$('.new_person:last').submit();
+			}
 		}
 	});
 });
@@ -97,3 +100,20 @@ $(function () {
 		match_person();
 	});
 });
+
+var EmployeeRole = ( function( window, undefined ) {
+  function disableTerminateSubmit(hbx_id) {
+    var target = $('#terminate_confirm_' + hbx_id);
+    var terminate_reason = target.find('select.interaction-choice-control-terminate-reason').val();
+    if(terminate_reason == undefined || terminate_reason == ""){
+      target.find('.terminate_reason_submit').attr("disabled",true);
+    }else{
+      target.find('.terminate_reason_submit').attr("disabled",false);
+    }
+  }
+
+  return {
+    disableTerminateSubmit : disableTerminateSubmit,
+  };
+})( window );
+

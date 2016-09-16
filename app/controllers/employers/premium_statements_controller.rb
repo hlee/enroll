@@ -1,14 +1,14 @@
 require 'csv'
+require 'prawn/table'
 class Employers::PremiumStatementsController < ApplicationController
   layout "two_column", only: [:show]
+  include Employers::PremiumStatementHelper
 
   def show
     @employer_profile = EmployerProfile.find(params.require(:id))
-    @current_plan_year = @employer_profile.published_plan_year
-    @hbx_enrollments = @current_plan_year.hbx_enrollments.first(100) rescue []
-
-
-    # @hbx_enrollments = HbxEnrollment.covered(@hbx_enrollments)
+    authorize @employer_profile, :list_enrollments?
+    set_billing_date
+    @hbx_enrollments = @employer_profile.enrollments_for_billing(@billing_date)
 
     respond_to do |format|
       format.html
@@ -19,7 +19,7 @@ class Employers::PremiumStatementsController < ApplicationController
     end
   end
 
-private
+  private
 
   def csv_for(hbx_enrollments)
     (output = "").tap do
@@ -27,7 +27,7 @@ private
         csv << ["Name", "SSN", "DOB", "Hired On", "Benefit Group", "Type", "Name", "Issuer", "Covered Ct", "Employer Contribution",
         "Employee Premium", "Total Premium"]
         hbx_enrollments.each do |enrollment|
-          ee = enrollment.subscriber.person.employee_roles.try(:first).try(:census_employee)
+          ee = enrollment.census_employee
           next if ee.blank?
           csv << [  ee.full_name,
                     ee.ssn,
@@ -37,7 +37,7 @@ private
                     enrollment.plan.coverage_kind,
                     enrollment.plan.name,
                     enrollment.plan.carrier_profile.legal_name,
-                    enrollment.humanized_dependent_summary,
+                    enrollment.humanized_members_summary,
                     view_context.number_to_currency(enrollment.total_employer_contribution),
                     view_context.number_to_currency(enrollment.total_employee_cost),
                     view_context.number_to_currency(enrollment.total_premium)
@@ -56,4 +56,11 @@ private
     end
   end
 
+  def set_billing_date
+    if params[:billing_date].present?
+      @billing_date = Date.strptime(params[:billing_date], "%m/%d/%Y")
+    else
+      @billing_date = billing_period_options.first[1]
+    end
+  end
 end

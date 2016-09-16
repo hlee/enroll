@@ -19,6 +19,16 @@ describe FamilyMember do
 
 end
 
+describe FamilyMember, "given a person" do
+  let(:person) { Person.new }
+  subject { FamilyMember.new(:person => person) }
+
+  it "delegates #ivl_coverage_selected to person" do
+    expect(person).to receive(:ivl_coverage_selected)
+    subject.ivl_coverage_selected
+  end
+end
+
 describe FamilyMember, dbclean: :after_each do
   context "a family with members exists" do
     include_context "BradyBunchAfterAll"
@@ -71,7 +81,7 @@ describe FamilyMember, dbclean: :after_each do
 
     it "should raise error with nil family" do
       family_member = FamilyMember.new(**family_member_params)
-      expect{family_member.parent}.to raise_error
+      expect{family_member.parent}.to raise_error(RuntimeError, "undefined parent family")
     end
   end
 

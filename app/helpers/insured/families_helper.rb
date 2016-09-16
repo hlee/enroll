@@ -1,5 +1,18 @@
 module Insured::FamiliesHelper
 
+  def plan_shopping_dependent_text(hbx_enrollment)
+    subscriber, dependents = hbx_enrollment.hbx_enrollment_members.partition {|h| h.is_subscriber == true }
+    if subscriber.present? && dependents.count == 0
+      ("<span class='dependent-text'>#{subscriber.first.person.full_name}</span>").html_safe
+    elsif subscriber.blank? && dependents.count == 1
+      ("<span class='dependent-text'>#{dependents.first.person.full_name}</span>").html_safe
+    elsif subscriber.blank? && dependents.count > 1
+      (link_to(pluralize(dependents.count, "dependent"), "", data: {toggle: "modal", target: "#dependentsList"}, class: "dependent-text")).html_safe + render(partial: "shared/dependents_list_modal", locals: {subscriber: subscriber, dependents: dependents})
+    else
+      ("<span class='dependent-text'>#{subscriber.first.person.full_name}</span>" + " + " + link_to(pluralize(dependents.count, "dependent"), "", data: {toggle: "modal", target: "#dependentsList"}, class: "dependent-text")).html_safe + render(partial: "shared/dependents_list_modal", locals: {subscriber: subscriber, dependents: dependents})
+    end
+  end
+
   def current_premium hbx_enrollment
     if hbx_enrollment.kind == 'employer_sponsored'
       hbx_enrollment.total_employee_cost
@@ -16,7 +29,11 @@ module Insured::FamiliesHelper
   end
 
   def shift_purchase_time(policy)
-    policy.created_at.in_time_zone('Eastern Time (US & Canada)') 
+    policy.created_at.in_time_zone('Eastern Time (US & Canada)')
+  end
+
+  def shift_waived_time(policy)
+    (policy.submitted_at || policy.created_at).in_time_zone('Eastern Time (US & Canada)')
   end
 
   def format_policy_purchase_date(policy)
@@ -27,11 +44,21 @@ module Insured::FamiliesHelper
     shift_purchase_time(policy).strftime("%-I:%M%p")
   end
 
+  def format_policy_waived_date(policy)
+    format_date(shift_waived_time(policy))
+  end
+
+  def format_policy_waived_time(policy)
+    shift_waived_time(policy).strftime("%-I:%M%p")
+  end
+
   def render_plan_type_details(plan)
     plan_details = [ plan.try(:plan_type).try(:upcase) ].compact
 
+    metal_level = display_dental_metal_level(plan)
+
     if plan_level = plan.try(:metal_level).try(:humanize)
-      plan_details << "<span class=\"#{plan_level.try(:downcase)}-icon\">#{plan_level}</span>"
+      plan_details << "<span class=\"#{plan_level.try(:downcase)}-icon\">#{metal_level}</span>"
     end
 
     if plan.try(:nationwide)
@@ -39,7 +66,7 @@ module Insured::FamiliesHelper
     end
 
     plan_details.inject([]) do |data, element|
-      data << "<label>#{element}</label>"
+      data << "#{element}"
     end.join("&nbsp<label class='separator'></label>").html_safe
   end
 
@@ -47,9 +74,7 @@ module Insured::FamiliesHelper
     options = {class: 'qle-menu-item'}
     data = {
       title: qle.title, id: qle.id.to_s, label: qle.event_kind_label,
-      post_event_sep_in_days: qle.post_event_sep_in_days,
-      pre_event_sep_in_days: qle.pre_event_sep_in_days,
-      date_hint: qle.date_hint, is_self_attested: qle.is_self_attested,
+      is_self_attested: qle.is_self_attested,
       current_date: TimeKeeper.date_of_record.strftime("%m/%d/%Y")
     }
 
@@ -78,14 +103,26 @@ module Insured::FamiliesHelper
     options
   end
 
-  def show_employer_panel?(person, hbx_enrollments)
-    return false if person.blank? or !person.has_active_employee_role?
-    return true if hbx_enrollments.blank? or hbx_enrollments.shop_market.blank?
+  def newhire_enrollment_eligible?(employee_role)
+    return false if employee_role.blank? || employee_role.census_employee.blank?
 
-    if hbx_enrollments.shop_market.entries.map(&:employee_role_id).include? person.active_employee_roles.first.id
-      false
-    else
+    employee_role.census_employee.newhire_enrollment_eligible? && employee_role.can_select_coverage?
+  end
+
+  def has_writing_agent?(employee_role)
+    employee_role.employer_profile.active_broker_agency_account.writing_agent rescue false
+  end
+
+  def has_writing_agent?(employee_role)
+    employee_role.employer_profile.active_broker_agency_account.writing_agent rescue false
+  end
+
+  def display_aasm_state?(enrollment)
+    if enrollment.is_shop?
       true
+    else
+      ['coverage_selected', 'coverage_canceled', 'coverage_terminated'].include?(enrollment.aasm_state.to_s)
     end
   end
+
 end

@@ -6,7 +6,7 @@ class CensusEmployee < CensusMember
   include Autocomplete
   require 'roo'
 
-  EMPLOYMENT_ACTIVE_STATES = %w(eligible employee_role_linked)
+  EMPLOYMENT_ACTIVE_STATES = %w(eligible employee_role_linked employee_termination_pending)
   EMPLOYMENT_TERMINATED_STATES = %w(employment_terminated rehired)
 
   field :is_business_owner, type: Boolean, default: false
@@ -29,16 +29,20 @@ class CensusEmployee < CensusMember
     cascade_callbacks: true,
     validate: true
 
+  embeds_many :workflow_state_transitions, as: :transitional
+
   accepts_nested_attributes_for :census_dependents, :benefit_group_assignments
 
   validates_presence_of :employer_profile_id, :ssn, :dob, :hired_on, :is_business_owner
   validate :check_employment_terminated_on
-  validate :check_coverage_terminated_on # date must be within 60 days of TimeKeeper.date_of_record
   validate :active_census_employee_is_unique
   validate :allow_id_info_changes_only_in_eligible_state
   validate :check_census_dependents_relationship
   validate :no_duplicate_census_dependent_ssns
+  validate :check_hired_on_before_dob
   after_update :update_hbx_enrollment_effective_on_by_hired_on
+
+  before_save :assign_default_benefit_package
 
   index({aasm_state: 1})
   index({last_name: 1})
@@ -61,9 +65,20 @@ class CensusEmployee < CensusMember
   scope :non_terminated, -> { where(:aasm_state.nin => EMPLOYMENT_TERMINATED_STATES) }
 
   #TODO - need to add fix for multiple plan years
-  scope :enrolled,    ->{ any_in("benefit_group_assignments.aasm_state" => ["coverage_selected", "coverage_waived"]) }
-  scope :covered,     ->{ where( "benefit_group_assignments.aasm_state" => "coverage_selected" ) }
-  scope :waived,      ->{ where( "benefit_group_assignments.aasm_state" => "coverage_waived" ) }
+  # scope :enrolled,    ->{ where("benefit_group_assignments.aasm_state" => ["coverage_selected", "coverage_waived"]) }
+  # scope :covered,     ->{ where( "benefit_group_assignments.aasm_state" => "coverage_selected" ) }
+  # scope :waived,      ->{ where( "benefit_group_assignments.aasm_state" => "coverage_waived" ) }
+
+  scope :covered,    ->{ where(:"benefit_group_assignments" => {
+    :$elemMatch => { :aasm_state => "coverage_selected", :is_active => true }
+    })}
+
+  scope :waived,    ->{ where(:"benefit_group_assignments" => {
+    :$elemMatch => { :aasm_state => "coverage_waived", :is_active => true }
+    })}
+
+  scope :enrolled, -> { any_of([covered.selector, waived.selector]) }
+
 
   scope :employee_name, -> (employee_name) { any_of({first_name: /#{employee_name}/i}, {last_name: /#{employee_name}/i}, first_name: /#{employee_name.split[0]}/i, last_name: /#{employee_name.split[1]}/i) }
 
@@ -96,8 +111,65 @@ class CensusEmployee < CensusMember
     write_attribute(:employee_relationship, "self")
   end
 
+  def assign_default_benefit_package
+    self.employer_profile.plan_years.where(:aasm_state.in => PlanYear::PUBLISHED + PlanYear::RENEWING + ['draft']).order_by(:start_on.asc).each do |py|
+      if self.benefit_group_assignments.detect{|bg_assign| py.benefit_groups.map(&:id).include?(bg_assign.benefit_group_id) }.blank?
+        find_or_build_benefit_group_assignment(py.benefit_groups.first)
+      end
+    end
+  end
+
+  def find_or_build_benefit_group_assignment(benefit_group)
+    return unless benefit_group
+    return if self.benefit_group_assignments.where(:benefit_group_id => benefit_group.id).present?
+
+    active = false
+    if active_benefit_group_assignment.blank?
+      active = true
+    else
+      if PlanYear::PUBLISHED.include?(benefit_group.plan_year.aasm_state)
+        self.benefit_group_assignments = self.benefit_group_assignments.map do |bg_assignment|
+          bg_assignment.is_active = false
+          bg_assignment
+        end
+      end
+    end
+
+    self.benefit_group_assignments << BenefitGroupAssignment.new(benefit_group: benefit_group, start_on: benefit_group.start_on, is_active: active)
+  end
+
+  def find_or_create_benefit_group_assignment(benefit_group)
+    bg_assignments = benefit_group_assignments.where(:benefit_group_id => benefit_group.id).order_by(:'created_at'.desc)
+    valid_bg_assignment = bg_assignments.detect{|bg_assign| bg_assign.aasm_state != 'initialized'}
+    valid_bg_assignment = bg_assignments.first if valid_bg_assignment.blank?
+    if valid_bg_assignment.present?
+      valid_bg_assignment.make_active
+    else
+      add_benefit_group_assignment(benefit_group, benefit_group.plan_year.start_on)
+    end
+  end
+
+  def add_renew_benefit_group_assignment(new_benefit_group)
+    raise ArgumentError, "expected BenefitGroup" unless new_benefit_group.is_a?(BenefitGroup)
+
+    benefit_group_assignments.renewing.each do |benefit_group_assignment|
+      benefit_group_assignment.destroy
+    end
+
+    bga = BenefitGroupAssignment.new(benefit_group: new_benefit_group, start_on: new_benefit_group.start_on, is_active: false)
+    bga.renew_coverage
+    benefit_group_assignments << bga
+  end
+
+  def add_benefit_group_assignment(new_benefit_group, start_on = TimeKeeper.date_of_record)
+    raise ArgumentError, "expected BenefitGroup" unless new_benefit_group.is_a?(BenefitGroup)
+    reset_active_benefit_group_assignments(new_benefit_group)
+    benefit_group_assignments << BenefitGroupAssignment.new(benefit_group: new_benefit_group, start_on: start_on)
+  end
+
+
   def update_hbx_enrollment_effective_on_by_hired_on
-    if employee_role.present? and hired_on != employee_role.hired_on
+    if employee_role.present? && hired_on != employee_role.hired_on
       employee_role.set(hired_on: hired_on)
       enrollments = employee_role.person.primary_family.active_household.hbx_enrollments.active.open_enrollments rescue []
       enrollments.each do |enrollment|
@@ -107,6 +179,18 @@ class CensusEmployee < CensusMember
         end
       end
     end
+  end
+
+  def new_hire_enrollment_period
+    start_on = [hired_on, created_at].max
+    end_on = earliest_eligible_date.present? ? [start_on + 30.days, earliest_eligible_date].max : (start_on + 30.days)
+    (start_on.beginning_of_day)..(end_on.end_of_day)
+  end
+
+  # TODO: eligibility rule different for active and renewal plan years
+  def earliest_eligible_date
+    benefit_group_assignment = renewal_benefit_group_assignment || active_benefit_group_assignment
+    benefit_group_assignment.benefit_group.eligible_on(hired_on) if benefit_group_assignment
   end
 
   # def first_name=(new_first_name)
@@ -172,6 +256,10 @@ class CensusEmployee < CensusMember
     benefit_group_assignments << BenefitGroupAssignment.new(benefit_group: new_benefit_group, start_on: start_on)
   end
 
+  def qle_30_day_eligible?
+    is_inactive? && (TimeKeeper.date_of_record - employment_terminated_on).to_i < 30
+  end
+
   def active_benefit_group_assignment
     benefit_group_assignments.detect { |assignment| assignment.is_active? }
   end
@@ -187,6 +275,21 @@ class CensusEmployee < CensusMember
   def published_benefit_group_assignment
     benefit_group_assignments.detect do |benefit_group_assignment|
       benefit_group_assignment.benefit_group.plan_year.employees_are_matchable?
+    end
+  end
+
+  def add_default_benefit_group_assignment
+    if plan_year = (self.employer_profile.plan_years.published_plan_years_by_date(hired_on).first || self.employer_profile.published_plan_year)
+      add_benefit_group_assignment(plan_year.benefit_groups.first)
+      if self.employer_profile.renewing_plan_year.present?
+        add_renew_benefit_group_assignment(self.employer_profile.renewing_plan_year.benefit_groups.first)
+      end
+    end
+  end
+
+  def active_benefit_group
+    if active_benefit_group_assignment.present?
+      active_benefit_group_assignment.benefit_group
     end
   end
 
@@ -239,36 +342,45 @@ class CensusEmployee < CensusMember
   end
 
   def terminate_employment!(employment_terminated_on)
-    if may_terminate_employee_role?
 
-      if active_benefit_group_assignment.present?
-        unless active_benefit_group_assignment.may_terminate_coverage?
-          message = "Error terminating employee #{full_name}, unable to terminate benefit group assignment"
-          Rails.logger.error { message }
-          raise CensusEmployeeError, message
-        end
-      end
+    if employment_terminated_on < TimeKeeper.date_of_record
 
-      if renewal_benefit_group_assignment.present?
-        unless renewal_benefit_group_assignment.may_terminate_coverage?
-          message = "Error terminating employee #{full_name}, unable to terminate renewal benefit group assignment"
-          Rails.logger.error { message }
-          raise CensusEmployeeError, message
+      if may_terminate_employee_role?
+
+        unless employee_termination_pending?
+
+
+          self.employment_terminated_on = employment_terminated_on
+          self.coverage_terminated_on = earliest_coverage_termination_on(employment_terminated_on)
+
+          census_employee_hbx_enrollment = HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(active_benefit_group_assignment)
+          census_employee_hbx_enrollment.map { |e| self.employment_terminated_on < e.effective_on ? e.cancel_coverage!(self.employment_terminated_on) : e.schedule_coverage_termination!(self.coverage_terminated_on) }
+
+          census_employee_hbx_enrollment = HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(renewal_benefit_group_assignment)
+          census_employee_hbx_enrollment.map { |e| self.employment_terminated_on < e.effective_on ? e.cancel_coverage!(self.employment_terminated_on) : e.schedule_coverage_termination!(self.coverage_terminated_on)  }
+
         end
+        terminate_employee_role!
+      else
+        message = "Error terminating employment: unable to terminate employee role for: #{self.full_name}"
+        Rails.logger.error { message }
+        raise CensusEmployeeError, message
       end
+    else # Schedule Future Terminations as employment_terminated_on is in the future
 
       self.employment_terminated_on = employment_terminated_on
       self.coverage_terminated_on = earliest_coverage_termination_on(employment_terminated_on)
 
-      active_benefit_group_assignment.terminate_coverage! if active_benefit_group_assignment.present?
-      renewal_benefit_group_assignment.terminate_coverage! if renewal_benefit_group_assignment.present?
-      terminate_employee_role!
+      if may_schedule_employee_termination? || employee_termination_pending?
+          schedule_employee_termination!
+          census_employee_hbx_enrollment = HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(active_benefit_group_assignment)
+          census_employee_hbx_enrollment.map { |e| self.employment_terminated_on < e.effective_on ? e.cancel_coverage!(self.employment_terminated_on) : e.schedule_coverage_termination!(self.coverage_terminated_on) }
 
-    else
-      message = "Error terminating employment: unable to terminate employee role for: #{self.full_name}"
-      Rails.logger.error { message }
-      raise CensusEmployeeError, message
-    end
+          census_employee_hbx_enrollment = HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(renewal_benefit_group_assignment)
+          census_employee_hbx_enrollment.map { |e| self.employment_terminated_on < e.effective_on ? e.cancel_coverage!(self.employment_terminated_on) : e.schedule_coverage_termination!(self.coverage_terminated_on) }
+
+      end
+  end
 
     self
   end
@@ -292,6 +404,10 @@ class CensusEmployee < CensusMember
 
   def is_active?
     EMPLOYMENT_ACTIVE_STATES.include?(aasm_state)
+  end
+
+  def is_inactive?
+    EMPLOYMENT_TERMINATED_STATES.include?(aasm_state)
   end
 
   def employee_relationship
@@ -325,12 +441,37 @@ class CensusEmployee < CensusMember
                                                           ssn: ssn,
                                                           dob: dob.strftime("%Y-%m-%d")})
     person = employee_relationship.match_person if employee_relationship.present?
-    return false if person.blank? or (person.present? and person.has_active_employee_role?)
+    return false if person.blank? || (person.present? && person.has_active_employee_role?)
     Factories::EnrollmentFactory.build_employee_role(person, nil, employer_profile, self, hired_on)
     return true
   end
 
+  def newhire_enrollment_eligible?
+    active_benefit_group_assignment.present? && active_benefit_group_assignment.initialized?
+  end
+
+  def has_active_health_coverage?(plan_year)
+    benefit_group_ids = plan_year.benefit_groups.map(&:id)
+
+    bg_assignment = active_benefit_group_assignment if benefit_group_ids.include?(active_benefit_group_assignment.try(:benefit_group_id))
+    bg_assignment = renewal_benefit_group_assignment if benefit_group_ids.include?(renewal_benefit_group_assignment.try(:benefit_group_id))
+
+    bg_assignment.present? && HbxEnrollment.find_shop_and_health_by_benefit_group_assignment(bg_assignment).present?
+  end
+
   class << self
+
+    def advance_day(new_date)
+      CensusEmployee.terminate_scheduled_census_employees
+    end
+
+    def terminate_scheduled_census_employees(as_of_date = TimeKeeper.date_of_record)
+      census_employees_for_termination = CensusEmployee.where(:aasm_state => "employee_termination_pending", :employment_terminated_on.lt => as_of_date)
+      census_employees_for_termination.each do |census_employee|
+        census_employee.terminate_employment(census_employee.employment_terminated_on)
+      end
+    end
+
     def find_all_by_employer_profile(employer_profile)
       unscoped.where(employer_profile_id: employer_profile._id).order_name_asc
     end
@@ -348,12 +489,12 @@ class CensusEmployee < CensusMember
     def find_all_terminated(employer_profiles: [], date_range: (TimeKeeper.date_of_record..TimeKeeper.date_of_record))
 
       if employer_profiles.size > 0
-        employer_profile_ids = employer_profiles.map(&:_id) 
+        employer_profile_ids = employer_profiles.map(&:_id)
         query = unscoped.terminated.any_in(employer_profile_id: employer_profile_ids).
                                     where(
                                       :employment_terminated_on.gte => date_range.first,
                                       :employment_terminated_on.lte => date_range.last
-                                    )      
+                                    )
       else
         query = unscoped.terminated.where(
                                     :employment_terminated_on.gte => date_range.first,
@@ -368,23 +509,28 @@ class CensusEmployee < CensusMember
   aasm do
     state :eligible, initial: true
     state :employee_role_linked
+    state :employee_termination_pending
     state :employment_terminated
     state :rehired
 
-    event :rehire_employee_role do
+    event :rehire_employee_role, :after => :record_transition do
       transitions from: [:employment_terminated], to: :rehired
     end
 
-    event :link_employee_role do
+    event :link_employee_role, :after => :record_transition do
       transitions from: :eligible, to: :employee_role_linked, :guard => :has_benefit_group_assignment?
     end
 
-    event :delink_employee_role, :guard => :has_no_hbx_enrollments? do
+    event :delink_employee_role, :guard => :has_no_hbx_enrollments?, :after => :record_transition do
       transitions from: :employee_role_linked, to: :eligible, :after => :clear_employee_role
     end
 
-    event :terminate_employee_role do
-      transitions from: [:eligible, :employee_role_linked], to: :employment_terminated
+    event :schedule_employee_termination, :after => :record_transition do
+      transitions from: [:employee_termination_pending, :eligible, :employee_role_linked], to: :employee_termination_pending
+    end
+
+    event :terminate_employee_role, :after => :record_transition do
+      transitions from: [:eligible, :employee_role_linked, :employee_termination_pending], to: :employment_terminated
     end
   end
 
@@ -398,6 +544,34 @@ class CensusEmployee < CensusMember
     }).any_in("benefit_group_assignments.benefit_group_id" => [bg_id])
   end
 
+  def self.to_csv
+    attributes = %w{employee_name dob hired status renewal_benefit_package benefit_package enrollment_status termination_date}
+
+    CSV.generate(headers: true) do |csv|
+      csv << attributes
+
+      all.each do |census_employee|
+        data = [
+          "#{census_employee.first_name} #{census_employee.middle_name} #{census_employee.last_name} ",
+          census_employee.dob,
+          census_employee.hired_on,
+          census_employee.aasm_state.humanize.downcase,
+          census_employee.renewal_benefit_group_assignment.try(:benefit_group).try(:title)
+        ]
+
+        if active_assignment = census_employee.active_benefit_group_assignment
+          data += [
+            active_assignment.benefit_group.title,
+            "dental: #{ d = active_assignment.try(:hbx_enrollments).detect{|enrollment| enrollment.coverage_kind == 'dental'}.try(:aasm_state).try(:humanize).try(:downcase)} health: #{ active_assignment.try(:hbx_enrollments).detect{|enrollment| enrollment.coverage_kind == 'health'}.try(:aasm_state).try(:humanize).try(:downcase)}"
+          ]
+        else
+          data += [nil, nil]
+        end
+        csv << (data + [census_employee.coverage_terminated_on])
+      end
+    end
+  end
+
   private
 
   def reset_active_benefit_group_assignments(new_benefit_group)
@@ -405,6 +579,13 @@ class CensusEmployee < CensusMember
       benefit_group_assignment.end_on = [new_benefit_group.start_on - 1.day, benefit_group_assignment.start_on].max
       benefit_group_assignment.update_attributes(is_active: false)
     end
+  end
+
+  def record_transition
+    self.workflow_state_transitions << WorkflowStateTransition.new(
+      from_state: aasm.from_state,
+      to_state: aasm.to_state
+    )
   end
 
   def set_autocomplete_slug
@@ -418,16 +599,17 @@ class CensusEmployee < CensusMember
   end
 
   def check_employment_terminated_on
-    if employment_terminated_on and employment_terminated_on <= hired_on
+    if employment_terminated_on && employment_terminated_on <= hired_on
       errors.add(:employment_terminated_on, "can't occur before hiring date")
+    end
+
+    if !self.employment_terminated? && !self.rehired?
+      if employment_terminated_on && employment_terminated_on <= TimeKeeper.date_of_record - 60.days
+        errors.add(:employment_terminated_on, "Employee termination must be within the past 60 days")
+      end
     end
   end
 
-  def check_coverage_terminated_on
-    if employment_terminated_on and employment_terminated_on <= TimeKeeper.date_of_record - 60.days
-      errors.add(:base, "Employee termination must be within the past 60 days")
-    end
-  end
 
   def no_duplicate_census_dependent_ssns
     dependents_ssn = census_dependents.map(&:ssn).select(&:present?)
@@ -460,6 +642,12 @@ class CensusEmployee < CensusMember
     if (ssn_changed? || dob_changed?) && aasm_state != "eligible"
       message = "An employee's identifying information may change only when in 'eligible' status. "
       errors.add(:base, message)
+    end
+  end
+
+  def check_hired_on_before_dob
+    if hired_on && dob && hired_on <= dob
+      errors.add(:hired_on, "date can't be before  date of birth.")
     end
   end
 

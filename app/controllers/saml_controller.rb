@@ -13,37 +13,38 @@ class SamlController < ApplicationController
 
     sign_out current_user if current_user.present?
 
-    if response.is_valid?
-      email = response.attributes['mail'].downcase
+    if response.is_valid? && response.name_id.present?
+      username = response.name_id.downcase
 
-      user_with_email = User.where(email: email).first
+      oim_user = User.where(oim_id: /^#{Regexp.quote(username)}$/i).first
 
-      if user_with_email.present?
-        user_with_email.idp_verified = true
-        user_with_email.oim_id = response.name_id
-        user_with_email.save!
+      if oim_user.present?
+        oim_user.idp_verified = true
+        oim_user.oim_id = response.name_id
+        oim_user.save!
         ::IdpAccountManager.update_navigation_flag(
-          user_with_email.oim_id,
-          email,
+          oim_user.oim_id,
+          response.attributes['mail'],
           ::IdpAccountManager::ENROLL_NAVIGATION_FLAG
         )
-        sign_in(:user, user_with_email)
+        sign_in(:user, oim_user)
         if !relay_state.blank?
-          user_with_email.update_attributes!(last_portal_visited: relay_state)
+          oim_user.update_attributes!(last_portal_visited: relay_state)
           redirect_to relay_state, flash: {notice: "Signed in Successfully."}
-        elsif !user_with_email.last_portal_visited.blank?
-          redirect_to user_with_email.last_portal_visited, flash: {notice: "Signed in Successfully."}
+        elsif !oim_user.last_portal_visited.blank?
+          redirect_to oim_user.last_portal_visited, flash: {notice: "Signed in Successfully."}
         else
-          user_with_email.update_attributes!(last_portal_visited: search_insured_consumer_role_index_path)
+          oim_user.update_attributes!(last_portal_visited: search_insured_consumer_role_index_path)
           redirect_to search_insured_consumer_role_index_path, flash: {notice: "Signed in Successfully."}
         end
       else
         new_password = User.generate_valid_password
-        new_user = User.new(email: email, password: new_password, idp_verified: true, oim_id: response.name_id)
+        new_email = response.attributes['mail'].present? ? response.attributes['mail'] : nil
+        new_user = User.new(email: new_email, password: new_password, idp_verified: true, oim_id: response.name_id)
         new_user.save!
         ::IdpAccountManager.update_navigation_flag(
           response.name_id,
-          email,
+          response.attributes['mail'],
           ::IdpAccountManager::ENROLL_NAVIGATION_FLAG
         )
         sign_in(:user, new_user)
@@ -55,6 +56,9 @@ class SamlController < ApplicationController
           redirect_to relay_state, flash: {notice: "Signed in Successfully."}
         end
       end
+    elsif !response.name_id.present?
+      log("ERROR: SAMLResponse has missing required mail attribute", {:severity => "critical"})
+      render file: 'public/403.html', status: 403
     else
       log("ERROR: SAMLResponse assertion errors #{response.errors}", {:severity => "error"})
       render file: 'public/403.html', status: 403
@@ -65,13 +69,20 @@ class SamlController < ApplicationController
   # Going to curam during the initial flow is triggered differently.
   # What we do here is set the navigation flag and send to the right location.
   def navigate_to_assistance
-    ::IdpAccountManager.update_navigation_flag(
-      current_user.oim_id,
-      current_user.email,
-      ::IdpAccountManager::CURAM_NAVIGATION_FLAG
-    )
-    # redirect_to destroy_user_session_path
-    redirect_to SamlInformation.curam_landing_page_url
+
+    if current_user.present?
+
+      ::IdpAccountManager.update_navigation_flag(
+        current_user.oim_id,
+        current_user.email,
+        ::IdpAccountManager::CURAM_NAVIGATION_FLAG
+      )
+      # redirect_to destroy_user_session_path
+      redirect_to SamlInformation.curam_landing_page_url
+    else
+      redirect_to SamlInformation.iam_login_url
+    end
+
   end
 
   def logout

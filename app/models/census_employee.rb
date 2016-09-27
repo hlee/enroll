@@ -522,6 +522,23 @@ class CensusEmployee < CensusMember
     logger.error(e)
   end
 
+  def cobra_reinstate
+    family = employee_role.person.primary_family
+    hbxs = family.latest_household.hbx_enrollments.with_cobra.select {|hbx| hbx.may_reinstate_coverage? } rescue []
+
+    hbxs.compact.each do |hbx|
+      enrollment_cobra_factory = Factories::FamilyEnrollmentCloneFactory.new
+      enrollment_cobra_factory.family = family
+      enrollment_cobra_factory.census_employee = self
+      enrollment_cobra_factory.enrollment = hbx
+      enrollment_cobra_factory.clone_for_reinstate
+    end
+    reinstate_eligibility!
+  rescue => e
+    logger.error(e)
+    false
+  end
+
   class << self
 
     def advance_day(new_date)

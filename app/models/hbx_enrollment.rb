@@ -41,6 +41,7 @@ class HbxEnrollment
   CANCELED_STATUSES = ["coverage_canceled"]
   RENEWAL_STATUSES = %w(auto_renewing renewing_coverage_selected renewing_transmitted_to_carrier renewing_coverage_enrolled)
   WAIVED_STATUSES = ["inactive", "renewing_waived"]
+  REINSTATE_STATUSES = ['coverage_reinstate']
 
   ENROLLED_AND_RENEWAL_STATUSES = ENROLLED_STATUSES + RENEWAL_STATUSES
 
@@ -150,9 +151,11 @@ class HbxEnrollment
   scope :canceled, -> { where(:aasm_state.in => CANCELED_STATUSES) }
   #scope :terminated, -> { where(:aasm_state.in => TERMINATED_STATUSES, :terminated_on.gte => TimeKeeper.date_of_record.beginning_of_day) }
   scope :terminated, -> { where(:aasm_state.in => TERMINATED_STATUSES) }
-  scope :show_enrollments, -> { any_of([enrolled.selector, renewing.selector, terminated.selector, canceled.selector]) }
+  scope :reinstate, -> { where(:aasm_state.in => REINSTATE_STATUSES) }
+  scope :show_enrollments, -> { any_of([enrolled.selector, renewing.selector, terminated.selector, canceled.selector, reinstate.selector]) }
   scope :show_enrollments_sans_canceled, -> { any_of([enrolled.selector, renewing.selector, terminated.selector, waived.selector]).order(created_at: :desc) }
   scope :enrollments_for_cobra, -> { where(:aasm_state.in => ['coverage_terminated', 'coverage_termination_pending', 'coverage_canceled', 'auto_renewing']).order(created_at: :desc) }
+  scope :with_cobra, -> { where(kind: 'employer_sponsored_cobra') }
   scope :with_plan, -> { where(:plan_id.ne => nil) }
   scope :coverage_selected_and_waived, -> {where(:aasm_state.in => SELECTED_AND_WAIVED).order(created_at: :desc)}
 
@@ -1059,6 +1062,8 @@ class HbxEnrollment
     state :unverified
     state :enrolled_contingent
 
+    state :coverage_reinstate
+
     event :advance_date, :after => :record_transition do
     end
 
@@ -1164,6 +1169,14 @@ class HbxEnrollment
     event :expire_coverage, :after => :record_transition do
       transitions from: [:coverage_selected, :transmitted_to_carrier, :coverage_enrolled], to: :coverage_expired, :guard  => :can_be_expired?
     end
+
+    event :reinstate_coverage, :after => :record_transition do
+      transitions from: [:coverage_terminated, :coverage_termination_pending, :coverage_canceled], to: :coverage_reinstate, guard: :can_be_reinstate?
+    end
+  end
+
+  def can_be_reinstate?
+    terminated_on.present? && TimeKeeper.date_of_record >= terminated_on + 1.days
   end
 
   def can_be_expired?

@@ -1957,6 +1957,18 @@ context "for cobra", :dbclean => :after_each do
       expect(enrollment.benefit_package_name).to eq benefit_group.title
     end
   end
+
+  context "can_be_reinstate?" do
+    it "should return true" do
+      enrollment.terminated_on = TimeKeeper.date_of_record - 1.days
+      expect(enrollment.can_be_reinstate?).to be_truthy
+    end
+
+    it "should return false" do
+      enrollment.terminated_on = TimeKeeper.date_of_record + 1.days
+      expect(enrollment.can_be_reinstate?).to be_falsey
+    end
+  end
 end
 
 describe HbxEnrollment, 'Terminate/Cancel current enrollment when new coverage selected', type: :model, dbclean: :after_all do

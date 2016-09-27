@@ -200,7 +200,7 @@ class Employers::CensusEmployeesController < ApplicationController
   end
 
   def cobra_reinstate
-    if @census_employee.reinstate_eligibility!
+    if @census_employee.cobra_reinstate
       flash[:notice] = "Successfully update Census Employee."
     else
       flash[:error] = "Unable to update Census Employee."

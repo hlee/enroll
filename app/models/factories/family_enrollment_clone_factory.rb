@@ -13,6 +13,16 @@ module Factories
       #terminate_history_enrollment(@enrollment)
     end
 
+    def clone_for_reinstate
+      raise ArgumentError if !defined?(@family) || !defined?(@census_employee)
+
+      clone_enrollment = clone_builder(@enrollment)
+      clone_enrollment = clone_reinstate_enrollment(@enrollment, clone_enrollment)
+      clone_enrollment.decorated_hbx_enrollment
+      save_clone_enrollment(clone_enrollment, @enrollment)
+      @enrollment.benefit_group_assignment.update(hbx_enrollment_id: clone_enrollment.id) if @enrollment.benefit_group_assignment.present? && clone_enrollment.present?
+    end
+
     def clone_builder(active_enrollment)
       clone_enrollment = @family.active_household.new_hbx_enrollment_from(
         employee_role: @census_employee.employee_role,
@@ -67,6 +77,20 @@ module Factories
         active_enrollment.terminate_coverage! if active_enrollment.may_terminate_coverage?
       end
 
+      clone_enrollment.hbx_enrollment_members = clone_enrollment_members(active_enrollment)
+      clone_enrollment
+    end
+
+    def clone_reinstate_enrollment(active_enrollment, clone_enrollment)
+      clone_enrollment.benefit_group_assignment_id = active_enrollment.benefit_group_assignment_id
+      clone_enrollment.benefit_group_id = active_enrollment.benefit_group_id
+      clone_enrollment.employee_role_id = active_enrollment.employee_role_id
+      clone_enrollment.plan_id = active_enrollment.plan_id
+      clone_enrollment.kind = 'employer_sponsored_cobra'
+      clone_enrollment.effective_on = active_enrollment.effective_on
+      clone_enrollment.terminated_on = active_enrollment.terminated_on
+      clone_enrollment.termination_submitted_on = active_enrollment.termination_submitted_on
+      clone_enrollment.aasm_state = 'coverage_reinstate'
       clone_enrollment.hbx_enrollment_members = clone_enrollment_members(active_enrollment)
       clone_enrollment
     end

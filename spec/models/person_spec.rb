@@ -1152,9 +1152,9 @@ describe Person do
       person.no_dc_address = true
       person.no_dc_address_reason = "homeless"
       person.addresses.build(kind: 'mailing') if !person.has_mailing_address?
-      person.addresses.build(kind: 'home') if !person.has_home_address?
+      person.addresses.build(kind: 'home', state: 'DC') if !person.has_dc_home_address?
       expect(person.save).to eq false
-      expect(person.errors[:base].to_s).to match /You should not have home address when you has no dc address/
+      expect(person.errors[:base].to_s).to match /You should not have home address in DC when you has no dc address/
     end
   end
 
@@ -1173,6 +1173,20 @@ describe Person do
 
       it "has_home_address? should return true" do
         expect(person.has_home_address?).to eq true
+      end
+    end
+
+    context "has_dc_home_address?" do
+      it "should return true" do
+        person.addresses = []
+        person.addresses.build(kind: 'home', state: 'DC')
+        expect(person.has_dc_home_address?).to eq true
+      end
+
+      it "should return flase" do
+        person.addresses = []
+        person.addresses.build(kind: 'home', state: 'CT')
+        expect(person.has_dc_home_address?).to eq false
       end
     end
     

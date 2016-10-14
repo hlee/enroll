@@ -244,8 +244,8 @@ class Person
         self.errors.add(:base, 'We need your mailing address so that your health insurance plan can send important documents like invoices and insurance cards. If you don’t check this address regularly, be sure to indicate that you want electronic notices below. You may also want to call your health insurance company to request electronic notifications from them.')
       end
 
-      if no_dc_address && no_dc_address_reason.present? && has_home_address?
-        self.errors.add(:base, 'You should not have home address when you has no dc address')
+      if no_dc_address && no_dc_address_reason.present? && has_dc_home_address?
+        self.errors.add(:base, 'You should not have home address in DC when you has no dc address')
       end
     end
   end
@@ -443,6 +443,10 @@ class Person
 
   def has_home_address?
     addresses.any? { |adr| adr.kind == "home" }
+  end
+
+  def has_dc_home_address?
+    addresses.any? { |adr| adr.kind == "home" && adr.state == 'DC' }
   end
 
   def home_email

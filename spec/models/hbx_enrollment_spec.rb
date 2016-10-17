@@ -713,6 +713,12 @@ describe HbxProfile, "class methods", type: :model do
       enrollment.save
       expect(enrollment.submitted_at).not_to be_nil
     end
+
+    it "created_at" do
+      time = TimeKeeper.datetime_of_record
+      enrollment = HbxEnrollment.new_from(consumer_role: consumer_role, coverage_household: coverage_household, benefit_package: benefit_package, qle: false, submitted_at: nil)
+      expect(enrollment.created_at).to eq time
+    end
   end
 
   context "coverage_year" do

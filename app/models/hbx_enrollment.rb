@@ -835,6 +835,7 @@ class HbxEnrollment
 
 
     enrollment.submitted_at = submitted_at
+    enrollment.created_at = TimeKeeper.datetime_of_record
     case
     when employee_role.present?
       if benefit_group.blank?

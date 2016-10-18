@@ -98,6 +98,10 @@ context "without default_general_agency_profile, not updateable" do
       expect(rendered).to have_selector('td', text: 'Default GA')
     end
 
+    it "should not have ga_status area" do
+      expect(rendered).not_to have_selector('div#ga_status')
+    end
+
     it "should not has btn class for select default ga" do
       expect(rendered).not_to have_selector('table a.btn.btn-min')
     end

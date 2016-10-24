@@ -1060,6 +1060,12 @@ describe HbxEnrollment, dbclean: :after_each do
       it "should not allow" do
         expect(shop_enrollment.can_select_coverage?).to be_falsey
       end
+
+      it "should get a error msg" do
+        shop_enrollment.can_select_coverage?
+        expect(shop_enrollment.errors.any?).to be_truthy
+        expect(shop_enrollment.errors.full_messages.to_s).to match /You can not keep existing plan by different plan year/
+      end
     end
 
     context 'when roster create present' do
@@ -1083,6 +1089,12 @@ describe HbxEnrollment, dbclean: :after_each do
 
       it "should not allow" do
         expect(shop_enrollment.can_select_coverage?).to be_falsey
+      end
+
+      it "should get a error msg" do
+        shop_enrollment.can_select_coverage?
+        expect(shop_enrollment.errors.any?).to be_truthy
+        expect(shop_enrollment.errors.full_messages.to_s).to match /You can not keep existing plan by different plan year/
       end
     end
 

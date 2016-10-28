@@ -26,7 +26,7 @@ end
 
 When(/^(.*) create a new account$/) do |named_person|
   person = people_for_newhire[named_person]
-  fill_in "user[email]", :with => person[:email]
+  fill_in "user[oim_id]", :with => person[:email]
   fill_in "user[password]", :with => person[:password]
   fill_in "user[password_confirmation]", :with => person[:password]
   screenshot("create_account")
@@ -182,7 +182,7 @@ Then(/^Employer should see a form to enter information about employee, address a
   fill_in 'jq_datepicker_ignore_census_employee[dob]', :with => person[:dob]
   fill_in 'census_employee[ssn]', :with => person[:ssn]
 
-  find(:xpath, "//label[@for='radio_male']").click
+  find(:xpath, "//label[@for='census_employee_gender_male']").click
 
   fill_in 'jq_datepicker_ignore_census_employee[hired_on]', :with => (TimeKeeper.date_of_record - 10.days).to_s
 

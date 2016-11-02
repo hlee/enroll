@@ -366,7 +366,7 @@ class CensusEmployee < CensusMember
     begin
       terminate_employment!(employment_terminated_on)
     rescue
-      nil
+      false
     else
       self
     end
@@ -415,7 +415,6 @@ class CensusEmployee < CensusMember
 
         unless employee_termination_pending?
 
-
           self.employment_terminated_on = employment_terminated_on
           self.coverage_terminated_on = earliest_coverage_termination_on(employment_terminated_on)
 
@@ -446,7 +445,7 @@ class CensusEmployee < CensusMember
           census_employee_hbx_enrollment.map { |e| self.employment_terminated_on < e.effective_on ? e.cancel_coverage!(self.employment_terminated_on) : e.schedule_coverage_termination!(self.coverage_terminated_on) }
 
       end
-  end
+    end
 
     self
   end

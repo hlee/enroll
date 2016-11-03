@@ -42,10 +42,10 @@ class Exchanges::AgentsController < ApplicationController
     consumer_role = person.consumer_role
     employee_role = person.employee_roles.last
     person.set_consumer_role_url
-    if consumer_role && consumer_role.bookmark_url
-      redirect_to bookmark_url_path(consumer_role.bookmark_url)
-    elsif employee_role && employee_role.bookmark_url
-      redirect_to bookmark_url_path(employee_role.bookmark_url)
+    if consumer_role && person.get_bookmark_url_by_role_without_default('consumer_role')
+      redirect_to bookmark_url_path(person.get_bookmark_url_by_role('consumer_role'))
+    elsif employee_role && person.get_bookmark_url_by_role_without_default('employee_role')
+      redirect_to bookmark_url_path(person.get_bookmark_url_by_role('employee_role'))
     else
       redirect_to family_account_path
     end

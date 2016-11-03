@@ -813,10 +813,24 @@ class Person
     ::MapReduce::FamilySearchForPerson.populate_for(self)
   end
 
+  def get_bookmark_url_by_role(role='consumer_role')
+    bookmark_url = get_bookmark_url_by_role_without_default(role)
+    bookmark_url.present? ? bookmark_url : '/families/home'
+  end
+
+  def get_bookmark_url_by_role_without_default(role='consumer_role')
+    user && user.get_bookmark_url_by_role(role)
+  end
+
+  def set_bookmark_url_by_role!(role, url)
+    return false if user.blank? || role.blank? || url.blank?
+    user.set_bookmark_url_by_role!(role, url)
+  end
+
   def set_consumer_role_url
     if consumer_role.present? && user.present?
       if primary_family.present? && primary_family.active_household.present? && primary_family.active_household.hbx_enrollments.where(kind: "individual", is_active: true).present?
-        consumer_role.update_attribute(:bookmark_url, "/families/home") if user.identity_verified? && user.idp_verified && (addresses.present? || no_dc_address.present? || no_dc_address_reason.present?)
+        set_bookmark_url_by_role!('consumer_role', "/families/home") if user.identity_verified? && user.idp_verified && (addresses.present? || no_dc_address.present? || no_dc_address_reason.present?)
       end
     end
   end

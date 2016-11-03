@@ -16,10 +16,10 @@ RSpec.describe Insured::ConsumerRolesController, :type => :controller do
     it "should redirect" do
       allow(person).to receive(:consumer_role?).and_return(true)
       allow(person).to receive(:consumer_role).and_return(consumer_role)
-      allow(consumer_role).to receive(:bookmark_url).and_return("test")
+      allow(person).to receive(:get_bookmark_url_by_role).and_return('text')
       get :privacy, {:aqhp => 'true'}
       expect(response).to have_http_status(:redirect)
-      expect(response).to redirect_to(person.consumer_role.bookmark_url+"?aqhp=true")
+      expect(response).to redirect_to(person.get_bookmark_url_by_role('consumer_role')+"?aqhp=true")
     end
     it "should render privacy" do
       allow(person).to receive(:consumer_role?).and_return(false)

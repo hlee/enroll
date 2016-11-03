@@ -108,7 +108,7 @@ RSpec.describe Insured::EmployeeRolesController, :dbclean => :after_each do
 
   describe "GET edit" do
     let(:user) { double("User") }
-    let(:person) { double("Person", broker_role: BrokerRole.new) }
+    let(:person) { double("Person", broker_role: BrokerRole.new, user: user) }
     let(:census_employee) { double("CensusEmployee") }
     let(:address) { double("Address") }
     let(:addresses) { [address] }
@@ -129,6 +129,8 @@ RSpec.describe Insured::EmployeeRolesController, :dbclean => :after_each do
       allow(person).to receive(:addresses).and_return(addresses)
       allow(person).to receive(:primary_family).and_return(family)
       allow(person).to receive(:emails=).and_return([email])
+      allow(person).to receive(:get_bookmark_url_by_role_without_default).and_return('/')
+      allow(person).to receive(:set_bookmark_url_by_role!).and_return(true)
       allow(census_employee).to receive(:email).and_return(email)
       allow(email).to receive(:address=).and_return("test@example.com")
       allow(controller).to receive(:build_nested_models).and_return(true)
@@ -140,7 +142,6 @@ RSpec.describe Insured::EmployeeRolesController, :dbclean => :after_each do
       allow(employer_profile).to receive(:_id).and_return(employer_profile.id)
       allow(user).to receive(:has_csr_subrole?).and_return(false)
       allow(person).to receive(:employee_roles).and_return([employee_role])
-      allow(employee_role).to receive(:bookmark_url=).and_return(true)
       sign_in user
 
       get :edit, id: employee_role.id
@@ -317,8 +318,8 @@ RSpec.describe Insured::EmployeeRolesController, :dbclean => :after_each do
   end
 
   describe "GET privacy" do
-    let(:user) { double("user") }
-    let(:person) { double("person")}
+    let(:user) { FactoryGirl.build(:user) }
+    let(:person) { FactoryGirl.build(:person, user: user) }
     let(:employee_role) {FactoryGirl.create(:employee_role)}
 
     it "renders the 'welcome' template when user has no employee role" do
@@ -341,7 +342,6 @@ RSpec.describe Insured::EmployeeRolesController, :dbclean => :after_each do
 
       allow(user).to receive(:save!).and_return(true)
       allow(person).to receive(:employee_roles).and_return([employee_role])
-      allow(employee_role).to receive(:bookmark_url).and_return(family_account_path)
       sign_in(user)
       get :privacy
       expect(response).to have_http_status(:redirect)

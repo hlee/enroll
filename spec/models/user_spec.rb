@@ -390,4 +390,38 @@ describe "orphans" do
       end
     end
   end
+
+  describe "bookmark_url" do
+    let(:user) { FactoryGirl.build(:user, bookmark_url: {'consumer_role'=>'/families/home', 'employee_role'=>'/'}) }
+    
+    context "get_bookmark_url_by_role" do
+      it "without params" do
+        expect(user.get_bookmark_url_by_role).to eq '/families/home'
+      end
+
+      it "consumer_role" do
+        expect(user.get_bookmark_url_by_role('consumer_role')).to eq '/families/home'
+      end
+
+      it "employee_role" do
+        expect(user.get_bookmark_url_by_role('employee_role')).to eq '/'
+      end
+
+      it "other" do
+        expect(user.get_bookmark_url_by_role('other')).to eq nil
+      end
+    end
+
+    context "set_bookmark_url_by_role" do
+      it "set bookmark_url by consumer_role" do
+        user.set_bookmark_url_by_role!('consumer_role', '/consumer_role')
+        expect(user.get_bookmark_url_by_role('consumer_role')).to eq '/consumer_role'
+      end
+
+      it "set bookmark_url by employer_staff_role" do
+        user.set_bookmark_url_by_role!('employer_staff_role', '/employers')
+        expect(user.get_bookmark_url_by_role('employer_staff_role')).to eq '/employers'
+      end
+    end
+  end
 end

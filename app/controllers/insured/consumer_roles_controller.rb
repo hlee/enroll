@@ -16,7 +16,7 @@ class Insured::ConsumerRolesController < ApplicationController
     @key = params.key(@val)
     @search_path = {@key => @val}
     if @person.try(:consumer_role?)
-      bookmark_url = @person.consumer_role.bookmark_url.to_s.present? ? @person.consumer_role.bookmark_url.to_s + "?#{@key.to_s}=#{@val.to_s}" : nil
+      bookmark_url = @person.get_bookmark_url_by_role('consumer_role').to_s.present? ? @person.get_bookmark_url_by_role('consumer_role').to_s + "?#{@key.to_s}=#{@val.to_s}" : nil
       redirect_to bookmark_url || family_account_path 
     end
   end
@@ -241,8 +241,7 @@ class Insured::ConsumerRolesController < ApplicationController
   def check_consumer_role
     set_current_person(required: false)
     if @person.try(:has_active_consumer_role?)
-      redirect_to @person.consumer_role.bookmark_url || family_account_path
-
+      redirect_to @person.get_bookmark_url_by_role('consumer_role') || family_account_path
     else
       current_user.last_portal_visited = search_insured_consumer_role_index_path
       current_user.save!

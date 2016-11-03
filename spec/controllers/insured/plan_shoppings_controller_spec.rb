@@ -42,6 +42,7 @@ RSpec.describe Insured::PlanShoppingsController, :type => :controller do
         sign_in user
         allow(person).to receive_message_chain("primary_family.enrolled_hbx_enrollments").and_return([hbx_enrollment_one])
         allow(person.primary_family).to receive(:active_household).and_return(household)
+        allow(user).to receive(:save).and_return(true)
       end
 
       it "returns http success" do

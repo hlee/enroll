@@ -146,6 +146,7 @@ class User
 
   field :last_portal_visited, type: String
   field :idp_verified, type: Boolean, default: false
+  field :bookmark_url, type: Hash, default: {}
 
   index({preferred_language: 1})
   index({approved: 1})
@@ -214,6 +215,16 @@ class User
       errors.add(:base, "There is no valid invitation for this account.")
       return
     end
+  end
+
+  def get_bookmark_url_by_role(role='consumer_role')
+    bookmark_url[role]
+  end
+
+  def set_bookmark_url_by_role!(role, url)
+    return false if role.blank? || url.blank?
+    self.bookmark_url[role] = url
+    self.save
   end
 
   def person_id

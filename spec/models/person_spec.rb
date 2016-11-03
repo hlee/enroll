@@ -1267,9 +1267,49 @@ describe Person do
       person.user = FactoryGirl.create(:user, :consumer)
       person.user.update_attribute(:idp_verified, true)
       person.user.ridp_by_payload!
-      person.consumer_role.update_attribute(:bookmark_url, "/insured/family_members?consumer_role_id")
+      person.set_bookmark_url_by_role!('consumer_role', "/insured/family_members?consumer_role_id")
       person.set_consumer_role_url
-      expect(person.consumer_role.bookmark_url).to eq "/families/home"
+      expect(person.get_bookmark_url_by_role('consumer_role')).to eq "/families/home"
+    end
+  end
+
+  describe "bookmark_url" do
+    let(:user) { FactoryGirl.build(:user, bookmark_url: {'consumer_role'=>'/families/home', 'employee_role'=>'/employee'}) }
+    let(:person) { FactoryGirl.build(:person, user: user) }
+
+    context 'get_bookmark_url_by_role' do
+      it "without user" do
+        allow(person).to receive(:user).and_return nil
+        expect(person.get_bookmark_url_by_role).to eq '/families/home'
+      end
+
+      it "without params" do
+        expect(person.get_bookmark_url_by_role).to eq '/families/home'
+      end
+
+      it "employee_role" do
+        expect(person.get_bookmark_url_by_role('employee_role')).to eq '/employee'
+      end
+    end
+
+    context "set_consumer_role_url" do
+      it "without user" do
+        allow(person).to receive(:user).and_return nil
+        expect(person.set_bookmark_url_by_role!('consumer_role', '/')).to eq false
+      end
+
+      it "without role" do
+        expect(person.set_bookmark_url_by_role!(nil, '/')).to eq false
+      end
+
+      it "without url" do
+        expect(person.set_bookmark_url_by_role!('consumer_role', nil)).to eq false
+      end
+
+      it "update bookmark_url for consumer_role" do
+        person.set_bookmark_url_by_role!('consumer_role', '/consumer_role')
+        expect(person.get_bookmark_url_by_role('consumer_role')).to eq '/consumer_role'
+      end
     end
   end
 end

@@ -59,10 +59,11 @@ RSpec.describe Exchanges::AgentsController do
       it 'should redirect to consumer role bookmark url' do
         current_user.roles=['consumer']
         current_user.person = person_user
-        FactoryGirl.create(:consumer_role, bookmark_url: '/', person: person_user)
+        FactoryGirl.create(:consumer_role, bookmark_url: '/families/home', person: person_user)
+        person_user.user.update_attribute(:bookmark_url, {'consumer_role'=>'/'})
         sign_in current_user
         get :resume_enrollment, person_id: person_user.id
-        expect(response).to redirect_to person_user.consumer_role.bookmark_url
+        expect(response).to redirect_to person_user.get_bookmark_url_by_role('consumer_role')
       end
     end
 
@@ -81,13 +82,13 @@ RSpec.describe Exchanges::AgentsController do
       it 'should redirect to consumer role bookmark url' do
         current_user.roles=['consumer']
         current_user.person = person_user
-        FactoryGirl.create(:consumer_role, bookmark_url: '/', person: person_user)
         person_user.user.update_attribute(:idp_verified, true)
         person_user.user.ridp_by_payload!
+        person_user.user.update_attribute(:bookmark_url, {'consumer_role'=>'/'})
         sign_in current_user
         get :resume_enrollment, person_id: person_user.id
         person_user.reload
-        expect(person_user.consumer_role.bookmark_url).to eq '/families/home'
+        expect(person_user.get_bookmark_url_by_role('consumer_role')).to eq '/families/home'
         expect(response).to redirect_to '/families/home'
       end
     end

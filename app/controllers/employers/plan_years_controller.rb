@@ -1,12 +1,14 @@
 class Employers::PlanYearsController < ApplicationController
   before_action :find_employer, except: [:recommend_dates]
-  before_action :generate_carriers_and_plans, except: [:recommend_dates, :generate_dental_carriers_and_plans]
+  #before_action :generate_carriers_and_plans, except: [:recommend_dates, :generate_dental_carriers_and_plans]
   before_action :updateable?, only: [:new, :edit, :create, :update, :revert, :publish, :force_publish, :make_default_benefit_group]
   layout "two_column"
 
   def new
     @plan_year = build_plan_year
     @carriers_cache = CarrierProfile.all.inject({}){|carrier_hash, carrier_profile| carrier_hash[carrier_profile.id] = carrier_profile.legal_name; carrier_hash;}
+    year = PlanYear.calculate_start_on_options.map{|opt| opt.last.to_date.year}.max
+    generate_carriers_by_year(year)
     @dental_plans = Plan.by_active_year(2016).shop_market.dental_coverage.all
   end
 
@@ -143,6 +145,8 @@ class Employers::PlanYearsController < ApplicationController
         benefit_group.elected_dental_plans_by_option_kind
       end
     end
+    year = @plan_year.start_on.year rescue TimeKeeper.date_of_record.year
+    generate_carriers_by_year(year)
 
     if @employer_profile.default_benefit_group.blank?
       @plan_year.benefit_groups[0].default= true
@@ -161,6 +165,7 @@ class Employers::PlanYearsController < ApplicationController
     @key = params[:key]
     @target = params[:target]
     plan_year = Date.parse(params["start_date"]).year unless params["start_date"].blank?
+    generate_carriers_by_year(plan_year)
     @plans = case @kind
             when "carrier"
               Plan.valid_shop_health_plans("carrier", @key, plan_year)
@@ -227,6 +232,7 @@ class Employers::PlanYearsController < ApplicationController
 
   def edit
     plan_year = @employer_profile.find_plan_year(params[:id])
+    generate_carriers_by_year(plan_year.start_on.year)
     @dental_plans = Plan.by_active_year(2016).shop_market.dental_coverage.all
     @just_a_warning = false
     if plan_year.publish_pending?
@@ -257,6 +263,7 @@ class Employers::PlanYearsController < ApplicationController
 
   def update
     plan_year = @employer_profile.plan_years.where(id: params[:id]).last
+    generate_carriers_by_year(plan_year.start_on.year)
     @plan_year = ::Forms::PlanYearForm.rebuild(plan_year, plan_year_params)
     @plan_year.benefit_groups.each_with_index do |benefit_group, i|
       benefit_group.elected_plans = benefit_group.elected_plans_by_option_kind
@@ -391,8 +398,9 @@ class Employers::PlanYearsController < ApplicationController
   def generate_dental_carriers_and_plans
     @location_id = params[:location_id]
     @plan_year_id = params[:plan_year_id]
-    @dental_carrier_names = Plan.valid_for_carrier(params.permit(:active_year)[:active_year])
-    @dental_carriers_array = Organization.valid_dental_carrier_names_for_options
+    active_year = params.permit(:active_year)[:active_year]
+    @dental_carrier_names = Plan.valid_for_carrier(active_year)
+    @dental_carriers_array = Organization.valid_dental_carrier_names_for_options(active_year)
     respond_to do |format|
       format.js
     end
@@ -441,9 +449,9 @@ class Employers::PlanYearsController < ApplicationController
 
   end
 
-  def generate_carriers_and_plans
-    @carrier_names = Organization.valid_carrier_names
-    @carriers_array = Organization.valid_carrier_names_for_options
+  def generate_carriers_by_year(year=TimeKeeper.date_of_record.year)
+    @carrier_names = Organization.valid_carrier_names(year)
+    @carriers_array = Organization.valid_carrier_names_for_options(year)
   end
 
   def build_plan_year

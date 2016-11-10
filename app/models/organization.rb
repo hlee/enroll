@@ -184,20 +184,19 @@ class Organization
     all_employers_by_plan_year_start_on_and_valid_plan_year_statuses(date)
   end
 
-  def self.valid_carrier_names
-    Rails.cache.fetch("carrier-names-at-#{TimeKeeper.date_of_record.year}", expires_in: 2.hour) do
+  def self.valid_carrier_names(active_year=TimeKeeper.date_of_record.year)
+    Rails.cache.fetch("carrier-names-at-#{active_year}", expires_in: 2.hour) do
       Organization.exists(carrier_profile: true).inject({}) do |carrier_names, org|
-        carrier_names[org.carrier_profile.id.to_s] = org.carrier_profile.legal_name if Plan.valid_shop_health_plans("carrier", org.carrier_profile.id).present?
+        carrier_names[org.carrier_profile.id.to_s] = org.carrier_profile.legal_name if Plan.valid_shop_health_plans("carrier", org.carrier_profile.id, active_year).present?
         carrier_names
       end
     end
   end
 
-  def self.valid_dental_carrier_names
-    Rails.cache.fetch("dental-carrier-names-at-#{TimeKeeper.date_of_record.year}", expires_in: 2.hour) do
+  def self.valid_dental_carrier_names(active_year=TimeKeeper.date_of_record.year)
+    Rails.cache.fetch("dental-carrier-names-at-#{active_year}", expires_in: 2.hour) do
       Organization.exists(carrier_profile: true).inject({}) do |carrier_names, org|
-
-        carrier_names[org.carrier_profile.id.to_s] = org.carrier_profile.legal_name if Plan.valid_shop_dental_plans("carrier", org.carrier_profile.id, 2016).present?
+        carrier_names[org.carrier_profile.id.to_s] = org.carrier_profile.legal_name if Plan.valid_shop_dental_plans("carrier", org.carrier_profile.id, active_year).present?
         carrier_names
       end
     end
@@ -212,12 +211,12 @@ class Organization
     end
   end
 
-  def self.valid_dental_carrier_names_for_options
-    Organization.valid_dental_carrier_names.invert.to_a
+  def self.valid_dental_carrier_names_for_options(active_year=TimeKeeper.date_of_record.year)
+    Organization.valid_dental_carrier_names(active_year).invert.to_a
   end
 
-  def self.valid_carrier_names_for_options
-    Organization.valid_carrier_names.invert.to_a
+  def self.valid_carrier_names_for_options(active_year=TimeKeeper.date_of_record.year)
+    Organization.valid_carrier_names(active_year).invert.to_a
   end
 
   def self.upload_invoice(file_path,file_name)

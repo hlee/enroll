@@ -197,6 +197,7 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       #allow(benefit_group).to receive(:reference_plan_id).and_return(FactoryGirl.create(:plan).id)
       allow(benefit_group).to receive(:reference_plan_id).and_return(nil)
       allow(plan_year).to receive(:save).and_return(save_result)
+      allow(plan_year).to receive(:start_on).and_return(TimeKeeper.date_of_record)
       allow(Organization).to receive(:valid_carrier_names).and_return({"id"=> "legal_name"})
     end
 
@@ -330,6 +331,7 @@ RSpec.describe Employers::PlanYearsController, :dbclean => :after_each do
       #allow(benefit_group).to receive(:reference_plan_id).and_return(FactoryGirl.create(:plan).id)
       allow(benefit_group).to receive(:reference_plan_id).and_return(nil)
       allow(plan_year).to receive(:save).and_return(save_result)
+      allow(plan_year).to receive(:start_on).and_return(TimeKeeper.date_of_record)
       allow(Organization).to receive(:valid_carrier_names).and_return({'id' => "legal_name"})
       post :create, :employer_profile_id => employer_profile_id, :plan_year => plan_year_request_params
     end

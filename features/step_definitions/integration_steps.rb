@@ -75,6 +75,7 @@ def people
       first_name: "John",
       last_name: "Wood",
       dob: "03/13/1977",
+      ssn: defined?(@u) ? @u.ssn : "771234567",
       legal_name: "Acmega LLC",
       dba: "Acmega LLC",
       fein: "890112233",
